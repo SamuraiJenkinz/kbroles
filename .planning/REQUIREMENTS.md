@@ -176,65 +176,73 @@ Explicitly excluded for v1. Documented to prevent scope creep.
 
 ## Traceability
 
-Filled in during roadmap creation. Each v1 requirement maps to exactly one phase.
+Each v1 requirement maps to exactly one phase.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUTH-01 | TBD | Pending |
-| AUTH-02 | TBD | Pending |
-| AUTH-03 | TBD | Pending |
-| ROLE-01 | TBD | Pending |
-| ROLE-02 | TBD | Pending |
-| ROLE-03 | TBD | Pending |
-| ROLE-04 | TBD | Pending |
-| ROLE-05 | TBD | Pending |
-| CHAT-01 | TBD | Pending |
-| CHAT-02 | TBD | Pending |
-| CHAT-03 | TBD | Pending |
-| CHAT-04 | TBD | Pending |
-| CHAT-05 | TBD | Pending |
-| CHAT-06 | TBD | Pending |
-| CHAT-07 | TBD | Pending |
-| GRND-01 | TBD | Pending |
-| GRND-02 | TBD | Pending |
-| GRND-03 | TBD | Pending |
-| GRND-04 | TBD | Pending |
-| GRND-05 | TBD | Pending |
-| GRND-06 | TBD | Pending |
-| GRND-07 | TBD | Pending |
-| PANE-01 | TBD | Pending |
-| PANE-02 | TBD | Pending |
-| PANE-03 | TBD | Pending |
-| PANE-04 | TBD | Pending |
-| PANE-05 | TBD | Pending |
-| PANE-06 | TBD | Pending |
-| PANE-07 | TBD | Pending |
-| FBK-01 | TBD | Pending |
-| FBK-02 | TBD | Pending |
-| FBK-03 | TBD | Pending |
-| FBK-04 | TBD | Pending |
-| FDBK-01 | TBD | Pending |
-| FDBK-02 | TBD | Pending |
-| FDBK-03 | TBD | Pending |
-| TRST-01 | TBD | Pending |
-| TRST-02 | TBD | Pending |
-| UTIL-01 | TBD | Pending |
-| TELE-01 | TBD | Pending |
-| TELE-02 | TBD | Pending |
-| TELE-03 | TBD | Pending |
-| TELE-04 | TBD | Pending |
-| CORP-01 | TBD | Pending |
-| CORP-02 | TBD | Pending |
-| DELV-01 | TBD | Pending |
-| DELV-02 | TBD | Pending |
-| DELV-03 | TBD | Pending |
-| DELV-04 | TBD | Pending |
+| AUTH-01 | Phase 5 | Pending |
+| AUTH-02 | Phase 3 | Pending |
+| AUTH-03 | Phase 5 | Pending |
+| ROLE-01 | Phase 3 | Pending |
+| ROLE-02 | Phase 3 | Pending |
+| ROLE-03 | Phase 3 | Pending |
+| ROLE-04 | Phase 3 | Pending |
+| ROLE-05 | Phase 3 | Pending |
+| CHAT-01 | Phase 3 | Pending |
+| CHAT-02 | Phase 3 | Pending |
+| CHAT-03 | Phase 3 | Pending |
+| CHAT-04 | Phase 3 | Pending |
+| CHAT-05 | Phase 3 | Pending |
+| CHAT-06 | Phase 3 | Pending |
+| CHAT-07 | Phase 3 | Pending |
+| GRND-01 | Phase 1 | Pending |
+| GRND-02 | Phase 1 | Pending |
+| GRND-03 | Phase 1 | Pending |
+| GRND-04 | Phase 1 | Pending |
+| GRND-05 | Phase 1 | Pending |
+| GRND-06 | Phase 1 | Pending |
+| GRND-07 | Phase 2 | Pending |
+| PANE-01 | Phase 4 | Pending |
+| PANE-02 | Phase 4 | Pending |
+| PANE-03 | Phase 4 | Pending |
+| PANE-04 | Phase 4 | Pending |
+| PANE-05 | Phase 4 | Pending |
+| PANE-06 | Phase 4 | Pending |
+| PANE-07 | Phase 4 | Pending |
+| FBK-01 | Phase 4 | Pending |
+| FBK-02 | Phase 2 | Pending |
+| FBK-03 | Phase 4 | Pending |
+| FBK-04 | Phase 4 | Pending |
+| FDBK-01 | Phase 3 | Pending |
+| FDBK-02 | Phase 3 | Pending |
+| FDBK-03 | Phase 6 | Pending |
+| TRST-01 | Phase 4 | Pending |
+| TRST-02 | Phase 4 | Pending |
+| UTIL-01 | Phase 3 | Pending |
+| TELE-01 | Phase 6 | Pending |
+| TELE-02 | Phase 6 | Pending |
+| TELE-03 | Phase 6 | Pending |
+| TELE-04 | Phase 6 | Pending |
+| CORP-01 | Phase 1 | Pending |
+| CORP-02 | Phase 2 | Pending |
+| DELV-01 | Phase 5 | Pending |
+| DELV-02 | Phase 5 | Pending |
+| DELV-03 | Phase 5 | Pending |
+| DELV-04 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 49 total
-- Mapped to phases: 0 (populated during roadmap creation)
-- Unmapped: 49 ⚠️ (will resolve to 0 after roadmap)
+- Mapped to phases: 49 ✓
+- Unmapped: 0
+
+**Per-phase counts:**
+- Phase 1 (Grounding Foundation): 7
+- Phase 2 (Chat Backend): 3
+- Phase 3 (Role Experience & Chat UI): 16
+- Phase 4 (Source Panel, Trust & Fallback UI): 12
+- Phase 5 (SSO & Teams Delivery): 6
+- Phase 6 (Telemetry, Evals & Pilot Hardening): 5
 
 ---
 *Requirements defined: 2026-04-22*
-*Last updated: 2026-04-22 after initial definition*
+*Last updated: 2026-04-22 after roadmap creation — traceability populated, 49/49 v1 requirements mapped*
