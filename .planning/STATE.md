@@ -12,29 +12,30 @@ See: .planning/ROADMAP.md (6 phases, standard depth)
 ## Current Position
 
 Phase: 1 of 6 (Grounding Foundation)
-Plan: 3 of 5 in current phase
+Plan: 4 of 5 in current phase
 Status: In progress
-Last activity: 2026-04-22 — Completed 03-llm-client-factory-PLAN.md
+Last activity: 2026-04-22 — Completed 04-system-prompt-composer-PLAN.md
 
-Progress: [██████░░░░] 60%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
+- Total plans completed: 4
 - Average duration: 4 min
-- Total execution time: ~12 min
+- Total execution time: ~16 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1 — Grounding Foundation | 3 / 5 | 12 min | 4 min |
+| 1 — Grounding Foundation | 4 / 5 | 16 min | 4 min |
 
 **Recent Trend:**
 - 01-scaffold-registry-schema: 7 min, 8 tasks, 6 feat commits + 1 docs metadata commit, 23/23 tests green
 - 02-citation-validator: 2 min, 4 tasks, 2 feat + 1 test commit + 1 docs metadata commit, 35/35 tests green (12 new)
 - 03-llm-client-factory: 3 min, 5 tasks, 2 feat + 2 test commits + 1 docs metadata commit, 48/48 tests green (13 new)
+- 04-system-prompt-composer: 4 min, 6 tasks, 4 feat + 1 test commit + 1 docs metadata commit, 65/65 tests green (17 new)
 
 *Updated after each plan completion*
 
@@ -78,6 +79,16 @@ Decisions are logged in PROJECT.md Key Decisions table. Load-bearing decisions a
 | 01-03 | `as unknown as { _opts: ... }` cast in tests (not `as any`) | Declares test-mock intent explicitly; satisfies strict TS and survives future linting without functional change |
 | 01-03 | `pnpm remove ajv && pnpm add ajv` to force devDep→dep migration | `pnpm add ajv` alone reports "Already up to date" when entry exists in devDependencies; explicit remove + re-add is the idiomatic fix |
 
+**Plan 04 decisions:**
+
+| Plan | Decision | Rationale |
+|------|----------|-----------|
+| 01-04 | Few-shot quotes adapted to verbatim source text (markdown `**` preserved, "OPCO or Line of Business" written in full) | Validator normalises whitespace only, not markdown; plan suggested placeholder strings that Plan 01 did not end up authoring — adjustment explicitly permitted by plan ("adapt the quote value at implementation time to a REAL substring") |
+| 01-04 | Added in-test verification loop asserting FEW_SHOTS quotes are verbatim substrings of REGISTRY bodies | Defence in depth: catches registry/fewShots drift at `pnpm test` time rather than waiting for Phase 6 eval fixtures to strip the quote mid-example |
+| 01-04 | Task 4.0 (fallback.ts guard) is a no-op because Plan 02 already committed the file (`1e39e40`) earlier in Wave 2 | Wave-2 race resolved cleanly: plan specified "create if missing"; file existed, verification passed, no duplicate write — no commit needed |
+| 01-04 | Layer-ordering test anchors on `<sources>\\n<source id=` (unambiguous block opening), not the bare `<sources>` string | The string `<sources>` appears twice in the prompt (once in header prose, once at block opening); disambiguating the anchor prevents false-negative on the ordering assertion |
+| 01-04 | Per-task atomic commits (4 feat + 1 test + 1 docs metadata) | Consistent with Plan 01/02/03 precedent; each task independently revertable |
+
 ### Pending Todos
 
 None.
@@ -96,6 +107,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-22 17:18 UTC
-Stopped at: Completed 03-llm-client-factory-PLAN.md
+Last session: 2026-04-22 17:20 UTC
+Stopped at: Completed 04-system-prompt-composer-PLAN.md
 Resume file: None
