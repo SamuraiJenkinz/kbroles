@@ -12,28 +12,29 @@ See: .planning/ROADMAP.md (6 phases, standard depth)
 ## Current Position
 
 Phase: 1 of 6 (Grounding Foundation)
-Plan: 2 of 5 in current phase
+Plan: 3 of 5 in current phase
 Status: In progress
-Last activity: 2026-04-22 — Completed 02-citation-validator-PLAN.md
+Last activity: 2026-04-22 — Completed 03-llm-client-factory-PLAN.md
 
-Progress: [████░░░░░░] 40%
+Progress: [██████░░░░] 60%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 4.5 min
-- Total execution time: ~9 min
+- Total plans completed: 3
+- Average duration: 4 min
+- Total execution time: ~12 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1 — Grounding Foundation | 2 / 5 | 9 min | 4.5 min |
+| 1 — Grounding Foundation | 3 / 5 | 12 min | 4 min |
 
 **Recent Trend:**
 - 01-scaffold-registry-schema: 7 min, 8 tasks, 6 feat commits + 1 docs metadata commit, 23/23 tests green
 - 02-citation-validator: 2 min, 4 tasks, 2 feat + 1 test commit + 1 docs metadata commit, 35/35 tests green (12 new)
+- 03-llm-client-factory: 3 min, 5 tasks, 2 feat + 2 test commits + 1 docs metadata commit, 48/48 tests green (13 new)
 
 *Updated after each plan completion*
 
@@ -68,6 +69,15 @@ Decisions are logged in PROJECT.md Key Decisions table. Load-bearing decisions a
 | 01-02 | Guarded `Record<string, Source \| undefined>` registry lookup rather than narrowing `cite.source_id` to `SourceId` | LLM response is untrusted input; unknown source_ids must produce `unknown_source_id` flip, not a TypeScript assertion error |
 | 01-02 | Per-task atomic commits (3 feat/test commits + 1 docs metadata commit) | Consistent with Plan 01 pattern; each task independently revertable |
 
+**Plan 03 decisions:**
+
+| Plan | Decision | Rationale |
+|------|----------|-----------|
+| 01-03 | Ajv promoted from devDependencies → dependencies | Fallback path is production-gated by env().STRICT_SCHEMA_SUPPORTED; code path is runtime-reachable and must resolve at prod bundle import time |
+| 01-03 | Plain-object mock client for streamAnswer tests (not vi.mock) | SUT only needs client.chat.completions.create to be a vi.fn(); inline shape captures per-call params directly without hoisting complexity |
+| 01-03 | `as unknown as { _opts: ... }` cast in tests (not `as any`) | Declares test-mock intent explicitly; satisfies strict TS and survives future linting without functional change |
+| 01-03 | `pnpm remove ajv && pnpm add ajv` to force devDep→dep migration | `pnpm add ajv` alone reports "Already up to date" when entry exists in devDependencies; explicit remove + re-add is the idiomatic fix |
+
 ### Pending Todos
 
 None.
@@ -86,6 +96,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-22 17:17 UTC
-Stopped at: Completed 02-citation-validator-PLAN.md
+Last session: 2026-04-22 17:18 UTC
+Stopped at: Completed 03-llm-client-factory-PLAN.md
 Resume file: None
