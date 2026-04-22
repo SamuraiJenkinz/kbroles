@@ -12,7 +12,7 @@ Six phases that start with the load-bearing grounding layer (citation contract, 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Grounding Foundation** — Source registry, citation contract, validator, LLM client, and MGTI smoke tests
+- [x] **Phase 1: Grounding Foundation** — Source registry, citation contract, validator, LLM client, and MGTI smoke tests
 - [ ] **Phase 2: Chat Backend (BFF)** — Streaming /api/chat with citation hold, fallback trigger, and entity-allowlist post-check
 - [ ] **Phase 3: Role Experience & Chat UI** — Role select, role-aware chat, input, messages, feedback, and utility actions
 - [ ] **Phase 4: Source Panel, Trust & Fallback UI** — Source panel, colour coding, freshness, about-tooltip, distinct fallback UI, flag-a-gap
@@ -161,7 +161,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Grounding Foundation | 0/TBD | Not started | - |
+| 1. Grounding Foundation | 5/5 | Complete | 2026-04-22 |
 | 2. Chat Backend (BFF) | 0/TBD | Not started | - |
 | 3. Role Experience & Chat UI | 0/TBD | Not started | - |
 | 4. Source Panel, Trust & Fallback UI | 0/TBD | Not started | - |

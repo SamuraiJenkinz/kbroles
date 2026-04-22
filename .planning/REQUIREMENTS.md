@@ -195,12 +195,12 @@ Each v1 requirement maps to exactly one phase.
 | CHAT-05 | Phase 3 | Pending |
 | CHAT-06 | Phase 3 | Pending |
 | CHAT-07 | Phase 3 | Pending |
-| GRND-01 | Phase 1 | Pending |
-| GRND-02 | Phase 1 | Pending |
-| GRND-03 | Phase 1 | Pending |
-| GRND-04 | Phase 1 | Pending |
-| GRND-05 | Phase 1 | Pending |
-| GRND-06 | Phase 1 | Pending |
+| GRND-01 | Phase 1 | Complete |
+| GRND-02 | Phase 1 | Complete |
+| GRND-03 | Phase 1 | Complete |
+| GRND-04 | Phase 1 | Complete |
+| GRND-05 | Phase 1 | Complete |
+| GRND-06 | Phase 1 | Complete |
 | GRND-07 | Phase 2 | Pending |
 | PANE-01 | Phase 4 | Pending |
 | PANE-02 | Phase 4 | Pending |
@@ -223,7 +223,7 @@ Each v1 requirement maps to exactly one phase.
 | TELE-02 | Phase 6 | Pending |
 | TELE-03 | Phase 6 | Pending |
 | TELE-04 | Phase 6 | Pending |
-| CORP-01 | Phase 1 | Pending |
+| CORP-01 | Phase 1 | Complete |
 | CORP-02 | Phase 2 | Pending |
 | DELV-01 | Phase 5 | Pending |
 | DELV-02 | Phase 5 | Pending |
