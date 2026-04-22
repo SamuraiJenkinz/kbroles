@@ -1,6 +1,12 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
+  // Prevent Turbopack from bundling pino's worker-thread deps (thread-stream,
+  // real-require, etc). Without this, `next dev` / `next build` crashes with
+  // `Cannot find module 'real-require'` at runtime. Next 16.1+ auto-resolves
+  // the transitive chain when the direct packages are declared here
+  // (RESEARCH.md §Pattern 5; this project is on Next 16.2.4 — see GH #84766).
+  serverExternalPackages: ['pino', 'pino-pretty'],
   turbopack: {
     rules: {
       // '*.md' files imported as raw string content. Equivalent to
