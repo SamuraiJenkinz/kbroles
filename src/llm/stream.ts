@@ -2,7 +2,13 @@ import type OpenAI from 'openai'
 import Ajv, { type ValidateFunction } from 'ajv'
 import { CITATION_SCHEMA, type KbResponse } from '@/grounding/schema'
 import { env } from '@/config/env'
-import { RefusalError, SchemaRejectAfterRetryError } from '@/llm/errors'
+import {
+  RefusalError,
+  SchemaRejectAfterRetryError,
+  Upstream5xxError,
+  UpstreamAuthError,
+  isRetryableUpstream,
+} from '@/llm/errors'
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
@@ -50,6 +56,61 @@ function getValidator(): ValidateFunction {
 }
 
 /**
+ * Bounded-retry wrapper with jittered exponential backoff (Plan 2-03 Task 3.2).
+ *
+ * Policy per CONTEXT.md §3:
+ *   - Retry on 429/502/503/504 + network (ECONNRESET/ETIMEDOUT/UND_ERR_SOCKET).
+ *   - Do NOT retry on 400/401/403/422 — these reclassify as UpstreamAuthError
+ *     for 401/403 (still non-retryable, just typed for route-side routing).
+ *   - Retries run BEFORE the first byte is streamed; this wrapper does not
+ *     apply to in-flight stream chunks (which is moot today because the
+ *     facade is stream:false; v1.1 refactor honours the boundary).
+ *   - Backoff: baseMs * 2^attempt + Math.random()*2-1 jittered by ±jitterMs.
+ *     attempt=0 → baseMs, attempt=1 → 2*baseMs, etc. Jitter at random=0.5 is 0.
+ *   - Retries exhausted on a retryable error → throw Upstream5xxError(status)
+ *     so the route can emit error{code:'upstream_unavailable'} (or the 429
+ *     variant) per 02-CONTEXT §4.2.
+ *
+ * Non-retryable errors propagate immediately without invoking setTimeout —
+ * callers (and their AbortSignal) see the failure without backoff delay.
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  cfg: { max: number; baseMs: number; jitterMs: number; signal?: AbortSignal },
+): Promise<T> {
+  let lastErr: unknown
+  for (let attempt = 0; attempt <= cfg.max; attempt++) {
+    // Short-circuit if the caller's signal aborted between attempts —
+    // we don't want to burn a retry slot after the route has given up.
+    // Conversion to UpstreamTimeoutError happens at the streamAnswer
+    // call-site; here we just propagate the AbortError-shaped signal.
+    if (cfg.signal?.aborted) {
+      const abortErr = new Error('Aborted') as Error & { name: string }
+      abortErr.name = 'AbortError'
+      throw abortErr
+    }
+    try {
+      return await fn()
+    } catch (err) {
+      lastErr = err
+      // Map auth failures to typed errors — still non-retryable, just typed.
+      const status = (err as { status?: number })?.status
+      if (status === 401 || status === 403) throw new UpstreamAuthError(status)
+      if (!isRetryableUpstream(err)) throw err
+      if (attempt === cfg.max) break
+      const delay = cfg.baseMs * Math.pow(2, attempt) + (Math.random() * 2 - 1) * cfg.jitterMs
+      await new Promise(r => setTimeout(r, Math.max(0, delay)))
+    }
+  }
+  // Exhausted retries on a retryable error — surface as Upstream5xxError.
+  const s = (lastErr as { status?: number })?.status ?? 0
+  if (s >= 500 || s === 429) throw new Upstream5xxError(s, `Retries exhausted (last status ${s})`)
+  // Network errors with no HTTP status — rethrow original; route handler
+  // treats unrecognized errors as upstream_unavailable.
+  throw lastErr
+}
+
+/**
  * Runtime-guarded usage extraction. Returns null when the SDK/upstream omits
  * the usage block entirely or surfaces fields of the wrong type. Plan 04's
  * log emitter treats null as "unknown" and still emits the record — we never
@@ -86,8 +147,22 @@ export async function streamAnswer(params: StreamAnswerParams): Promise<StreamAn
     ...messages,
   ]
 
+  // Retry config read from env() at call time (not at module load) so tests
+  // that mutate process.env + call __resetEnvCacheForTests() observe the
+  // current values. Route-level total-timeout AbortSignal is a separate knob
+  // plumbed in via params.signal (Task 3.3).
+  const retryCfg = {
+    max: e.UPSTREAM_RETRY_MAX,
+    baseMs: e.UPSTREAM_RETRY_BASE_MS,
+    jitterMs: e.UPSTREAM_RETRY_JITTER_MS,
+  }
+
   if (strictSupported) {
-    const completion = await client.chat.completions.create({
+    // Upstream-retry loop (429/5xx/network) wraps the single create() call.
+    // The Ajv schema-reject retry (fallback path below) is an orthogonal
+    // retry that doesn't fire on this strict-mode path — strict mode either
+    // returns schema-valid JSON or throws at the API level.
+    const completion = await withRetry(() => client.chat.completions.create({
       model: e.LLM_MODEL,
       messages: wireMessages,
       response_format: {
@@ -99,7 +174,7 @@ export async function streamAnswer(params: StreamAnswerParams): Promise<StreamAn
         },
       },
       stream: false,
-    })
+    }), retryCfg)
     const msg = completion.choices[0]?.message
     // Explicit refusal detection BEFORE JSON.parse — CONTEXT.md §Research Q1.
     // The OpenAI SDK surfaces safety-filter refusals as message.refusal (non-null
@@ -115,12 +190,17 @@ export async function streamAnswer(params: StreamAnswerParams): Promise<StreamAn
   const validator = getValidator()
 
   async function tryOnce(): Promise<StreamAnswerResult> {
-    const completion = await client.chat.completions.create({
+    // Upstream-retry loop also wraps the fallback-path create() — 429/5xx
+    // can occur regardless of which response_format was requested. The
+    // Ajv schema-reject retry (outer try/catch below tryOnce) is ORTHOGONAL:
+    // it retries on SCHEMA rejection, not HTTP errors. Both loops coexist
+    // because they address different failure modes.
+    const completion = await withRetry(() => client.chat.completions.create({
       model: e.LLM_MODEL,
       messages: wireMessages,
       response_format: { type: 'json_object' },
       stream: false,
-    })
+    }), retryCfg)
     const msg = completion.choices[0]?.message
     // Same refusal check on the fallback path — the model can refuse
     // regardless of which response_format was requested.

@@ -29,6 +29,26 @@ const EnvSchema = z.object({
   MAX_INFLIGHT_STREAMS: z.coerce.number().int().min(1).optional().default(20),
   MAX_MESSAGES:         z.coerce.number().int().min(1).optional().default(20),
   MAX_MESSAGE_CHARS:    z.coerce.number().int().min(1).optional().default(8000),
+
+  // Phase-2 upstream resilience knobs (02-CONTEXT.md §3 + 03-PLAN Task 3.2/3.3).
+  // All four fields use z.coerce.number().int() — the same process.env-string-
+  // coercion pattern as the MAX_* block above. Defaults are authoritative per
+  // CONTEXT §3; test coverage in src/config/__tests__/env.test.ts locks them.
+  //
+  //  UPSTREAM_TOTAL_TIMEOUT_MS: route-side AbortController fires this long
+  //    after request arrival (Plan 04 wires the controller; Plan 03 plumbs
+  //    the signal through streamAnswer). 45000ms chosen per CONTEXT §3.
+  //  UPSTREAM_RETRY_MAX: maximum RETRIES (default 2 = 3 total attempts).
+  //    Capped at 5 to prevent runaway backoff consuming the total-timeout
+  //    budget entirely.
+  //  UPSTREAM_RETRY_BASE_MS: exponential backoff base (500ms). attempt=0
+  //    waits 500ms, attempt=1 waits 1000ms, attempt=2 waits 2000ms.
+  //  UPSTREAM_RETRY_JITTER_MS: symmetric jitter range ±250ms added to each
+  //    wait so N concurrent retries don't align on the same slot.
+  UPSTREAM_TOTAL_TIMEOUT_MS: z.coerce.number().int().min(1000).optional().default(45000),
+  UPSTREAM_RETRY_MAX:        z.coerce.number().int().min(0).max(5).optional().default(2),
+  UPSTREAM_RETRY_BASE_MS:    z.coerce.number().int().min(100).optional().default(500),
+  UPSTREAM_RETRY_JITTER_MS:  z.coerce.number().int().min(0).optional().default(250),
 })
 
 export type Env = z.infer<typeof EnvSchema>
