@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "smoke": "tsx scripts/phase0-smoke.ts"
+    "smoke": "node --env-file-if-exists=.env.local --import tsx scripts/phase0-smoke.ts"
   },
   "dependencies": {
     "ajv": "^8.18.0",
