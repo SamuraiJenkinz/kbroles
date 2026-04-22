@@ -17,17 +17,17 @@ pnpm smoke -- --mode=prod      # against MGTI ingress (requires MGTI key + NODE_
 
 ## Smoke 1 — MGTI `baseURL` suffix
 
-**Result:** FAIL | PASS *(pending first run)*
-**Date:** YYYY-MM-DD
-**Operator:** <initials>
-**Mode:** dev / prod
+**Result:** PASS *(dev mode — prod-mode run pending MGTI access)*
+**Date:** 2026-04-22
+**Operator:** TK
+**Mode:** dev
 
 **What we're testing:** The `LLM_BASE_URL` env value resolves and auth works end-to-end.
 
-**Evidence (to be filled from smoke-script output):**
-- `baseURL`:
-- `model`:
-- `responseSnippet`: (first 120 chars of test echo response)
+**Evidence (dev mode):**
+- `baseURL`: `https://api.openai.com/v1`
+- `model`: `gpt-4o-2024-08-06`
+- `responseSnippet`: `Acknowledged.`
 
 **Remediation if FAIL:**
 On 404/405, try alternative suffixes in order: `/coreapi/openai`, `/coreapi/openai/`, `/coreapi/openai/v1`. Update `LLM_BASE_URL` in App Service Application Settings (or `.env.local` for dev) and re-run.
@@ -36,18 +36,19 @@ On 404/405, try alternative suffixes in order: `/coreapi/openai`, `/coreapi/open
 
 ## Smoke 2 — `response_format: json_schema` strict mode
 
-**Result:** FAIL | PASS *(pending first run)*
-**Date:** YYYY-MM-DD
-**Operator:** <initials>
-**Mode:** dev / prod
+**Result:** PASS *(dev mode — prod-mode run pending MGTI access)*
+**Date:** 2026-04-22
+**Operator:** TK
+**Mode:** dev
 
 **What we're testing:** Endpoint honours `response_format: { type: 'json_schema', strict: true }` with our `CITATION_SCHEMA` and returns JSON matching the `{ can_answer, answer, citations[] }` shape.
 
-**Evidence (to be filled from smoke-script output):**
-- `can_answer`:
-- `answer_preview`:
-- `citation_count_model` / `citation_count_validated`:
-- `validator_flips`:
+**Evidence (dev mode):**
+- `can_answer`: `true`
+- `answer_preview`: `The Short description field must contain the article title and follow the four-part naming convention: [Application/Topi`
+- `citation_count_model`: `1` / `citation_count_validated`: `1`
+- `validator_flips`: `0` (the model's citation passed the quote-substring validator — end-to-end grounding works)
+- `enum_first_source`: `locked` (CITATION_SCHEMA source_id enum is live)
 
 **Remediation if FAIL:**
 If strict mode is rejected with 400 or silently ignored: set `STRICT_SCHEMA_SUPPORTED=false` in App Service App Settings (dev: add to shell). `streamAnswer` will fall back to `response_format: json_object` + Ajv validation + one retry. Already implemented in `src/llm/stream.ts`; no code change needed.
@@ -56,21 +57,23 @@ If strict mode is rejected with 400 or silently ignored: set `STRICT_SCHEMA_SUPP
 
 ## Smoke 3 — Streaming chunk cadence through APIM
 
-**Result:** FAIL | PASS *(pending first run)*
-**Date:** YYYY-MM-DD
-**Operator:** <initials>
-**Mode:** dev / prod
+**Result:** PASS *(dev mode against api.openai.com — prod/APIM run pending MGTI access)*
+**Date:** 2026-04-22
+**Operator:** TK
+**Mode:** dev
 
 **What we're testing:** Streaming responses arrive in real-time chunks through MGTI's APIM (not buffered and delivered in one lump).
 
 **Thresholds:** PASS = P95 inter-chunk latency < 500 ms AND chunk count > 10 on a ~500-token response.
 
-**Evidence (to be filled from smoke-script output):**
-- `chunkCount`:
-- `firstChunkLatencyMs`:
-- `p95InterChunkMs`:
+**Evidence (dev mode):**
+- `chunkCount`: `195`
+- `firstChunkLatencyMs`: `868`
+- `p95InterChunkMs`: `65` (well under 500 ms threshold — public OpenAI reference baseline)
 
-**Remediation if FAIL:**
+**Note on dev vs. prod:** This run exercises `api.openai.com` directly, which is a clean reference baseline. The actual Pitfall #10 risk is MGTI's APIM buffering streaming chunks and delivering them in one lump; that only shows up when `--mode=prod` runs. Prod-mode run is a non-blocking Phase 2 gate (see STATE.md Blockers/Concerns).
+
+**Remediation if FAIL (prod mode):**
 Non-blocking for Phase 1 closure. Document the result. If APIM is buffering, Phase 2 (`/api/chat` streaming route) will need a non-streaming fallback — include the finding in Phase 2 CONTEXT. Engage MMC platform team on APIM tuning in parallel.
 
 ---
