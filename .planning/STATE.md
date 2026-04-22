@@ -12,24 +12,25 @@ See: .planning/ROADMAP.md (6 phases, standard depth)
 ## Current Position
 
 Phase: 2 of 6 (Chat Backend BFF)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-04-22 — Phase 1 complete (plans 01-05 shipped; dev-mode Phase-0 smokes PASS; prod-mode deferred to Phase 2 kickoff)
+Plan: 2 of 4 in current phase (chat-primitives) — COMPLETE; Plan 1 (infra-ops-setup) still IN PROGRESS paused at Task 1.1 checkpoint
+Status: Plan 02 complete (wave-1 parallel with Plan 01); awaiting human for prod-mode Phase-0 smoke to unblock Plan 01
+Last activity: 2026-04-22 — Plan 02 complete end-to-end (3 tasks, 3 feat commits 81b2410 / 83c3a2b / 6a42198, 40 new unit tests, 134/134 green); SUMMARY.md at .planning/phases/02-chat-backend-bff/02-02-SUMMARY.md
 
-Progress: [██████████] 100% (Phase 1 of 6)
+Progress: [██████████░░] Phase 1 of 6 complete; Phase 2 Plan 2 of 4 complete, Plan 1 of 4 in progress
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: ~6 min
-- Total execution time: ~31 min
+- Total plans completed: 6
+- Average duration: ~6.5 min
+- Total execution time: ~39 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1 — Grounding Foundation | 5 / 5 (complete) | ~31 min | ~6 min |
+| 2 — Chat Backend BFF     | 1 / 4 (Plan 02 complete; Plan 01 in progress; Plans 03/04 pending) | ~8 min so far | ~8 min |
 
 **Recent Trend:**
 - 01-scaffold-registry-schema: 7 min, 8 tasks, 6 feat commits + 1 docs metadata commit, 23/23 tests green
@@ -37,6 +38,7 @@ Progress: [██████████] 100% (Phase 1 of 6)
 - 03-llm-client-factory: 3 min, 5 tasks, 2 feat + 2 test commits + 1 docs metadata commit, 48/48 tests green (13 new)
 - 04-system-prompt-composer: 4 min, 6 tasks, 4 feat + 1 test commit + 1 docs metadata commit, 65/65 tests green (17 new)
 - 05-phase0-smoke: ~15 min active + user-loop, 7 tasks (5 committed + 1 verify-only + 1 deferred prod checkpoint), 1 feat + 1 test + 2 docs commits + 2 orchestrator fixes + 1 plan-metadata commit, 70/70 tests green (5 new CLI parser); dev-mode Smokes 1/2/3 PASS; prod deferred
+- 02-02-chat-primitives: 8 min active, 3 tasks autonomous (no checkpoints), 3 feat commits 81b2410 / 83c3a2b / 6a42198 + pending docs metadata commit, 134/134 tests green (40 new: 6 sse + 13 partialAnswer + 7 allowlist + 8 concurrency + 6 env + 14 requestSchema + 8 suggested; also absorbed 2 logger tests from parallel Plan 01); 6 source modules + entities.ts regex widening + env schema extension
 
 *Updated after each plan completion*
 
@@ -90,6 +92,17 @@ Decisions are logged in PROJECT.md Key Decisions table. Load-bearing decisions a
 | 01-04 | Layer-ordering test anchors on `<sources>\\n<source id=` (unambiguous block opening), not the bare `<sources>` string | The string `<sources>` appears twice in the prompt (once in header prose, once at block opening); disambiguating the anchor prevents false-negative on the ordering assertion |
 | 01-04 | Per-task atomic commits (4 feat + 1 test + 1 docs metadata) | Consistent with Plan 01/02/03 precedent; each task independently revertable |
 
+**Plan 02-02 decisions (chat-primitives):**
+
+| Plan  | Decision | Rationale |
+|-------|----------|-----------|
+| 02-02 | chatSemaphore uses LAZY initialization (first-call get) rather than module-load `new AsyncSemaphore(env().MAX_INFLIGHT_STREAMS)` | Module-load env() call forces every test that imports src/chat/* to populate four LLM_* env vars even for tests that never touch the semaphore. Lazy init keeps module imports cheap and test isolation clean. |
+| 02-02 | URL regex trailing-punctuation caveat handled in test fixtures, not regex | The URL regex greedily captures adjacent punctuation; ENTITY_ALLOWLIST harvests URLs from `<source url="...">` attributes (no punctuation). Fixing the regex would require handling Markdown-link parens, URL-encoded parens, trailing dots — non-trivial for a corner case. Positive-path tests author URL + whitespace. |
+| 02-02 | parseChatRequest runs granular field checks BEFORE zod safeParse, uses safeParse as belt-and-suspenders | 02-CONTEXT §4.1 locks 8 specific error codes. Bare zod safeParse produces a tree of generic issues that cannot be mapped 1:1 without fragile error-path string matching. Granular-first keeps codes deterministic; zod remains the type-inference source. |
+| 02-02 | entities.ts regexes widened to named exports rather than duplicated in allowlist.ts | Single source of truth — same regexes feed boot-time ENTITY_ALLOWLIST extraction AND runtime post-check. Duplication would create drift risk where a corpus-format change updates one set but not the other. Task 2.2 action block explicitly permitted. |
+| 02-02 | Release clamped to initialCap — stray double-release cannot inflate capacity | Defensive correctness: a double-release bug in route handler's finally block would otherwise permanently raise the cap. Clamping means a bug causes momentary over-permit-by-zero but never capacity leak. |
+| 02-02 | chatSemaphore exported as wrapper object (tryAcquire/release/available) not direct AsyncSemaphore instance | Wrapper lets __resetForTests swap the underlying instance transparently — callers hold a stable reference that always routes to the current instance. |
+
 **Plan 05 decisions (Phase-0 findings that constrain Phase 2):**
 
 | Plan | Decision | Rationale |
@@ -122,6 +135,14 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-22 — Plan 05 closure (Phase 1 complete)
-Stopped at: Completed 05-phase0-smoke-PLAN.md (dev-mode green; prod-mode deferred to Phase 2 kickoff)
+Last session: 2026-04-22 — Phase 2 Plan 02 (chat-primitives) complete (wave-1 parallel with Plan 01); Plan 01 still paused at Task 1.1 checkpoint
+Stopped at: Plan 02 complete; Plan 01 awaiting prod-mode Phase-0 smoke (unchanged); Plans 03 + 04 not started
+Resume signals (Plan 01):
+  - "prod-smoke-green" → continue to Plan 01 Task 1.2 (pino install + logger — NOTE: Plan 02 absorbed 2 logger tests from a parallel Plan 01 stub that landed on master; verify Plan 01's logger.ts exists before adding) and Task 1.3 (stub middleware)
+  - "blocked: no-mgti-access" → mark docs/phase-0-smoke.md prod sections `pending: no-mgti-access <date>`; continue to Plan 01 Tasks 1.2/1.3; Plan 04 Task 2 stays blocked
+  - "failed: smoke-N <note>" → capture remediation (often a Plan 03 timeout retune), then continue to Plan 01 Tasks 1.2/1.3
+Resume signals (Plans 03/04):
+  - Both ready to plan/execute — Plan 02 primitives provide all their dependency surface (AsyncSemaphore / SseEvent / checkEntityAllowlist / parseChatRequest / SUGGESTED_PROMPTS / partialAnswer)
+  - Plan 03 (upstream-resilience) wraps `streamAnswer` with retry/timeout; uses Plan 02's SseEvent error codes
+  - Plan 04 (route-wiring) composes all primitives; blocked on prod-mode smoke per Phase 2 entry gates
 Resume file: None
