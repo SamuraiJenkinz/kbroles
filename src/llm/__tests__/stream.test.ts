@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { streamAnswer, type ChatMessage } from '@/llm/stream'
+import { RefusalError, SchemaRejectAfterRetryError } from '@/llm/errors'
 import { CITATION_SCHEMA } from '@/grounding/schema'
 import { __resetEnvCacheForTests } from '@/config/env'
 import type OpenAI from 'openai'
@@ -13,8 +14,19 @@ interface MockCall {
   stream: boolean
 }
 
+/**
+ * Shape returned from client.chat.completions.create() that the mock can
+ * author directly. `message.refusal` is populated to simulate safety-filter
+ * refusals; `usage` is populated to test Plan 04's log-field propagation.
+ */
+interface MockResponse {
+  content?: string | null
+  refusal?: string
+  usage?: { prompt_tokens?: number; completion_tokens?: number } | null
+}
+
 function makeMockClient(
-  responses: Array<{ content: string }>
+  responses: MockResponse[],
 ): { client: OpenAI; calls: MockCall[] } {
   const calls: MockCall[] = []
   let callIdx = 0
@@ -25,7 +37,13 @@ function makeMockClient(
           calls.push(params)
           const response = responses[callIdx++]
           return {
-            choices: [{ message: { content: response.content } }],
+            choices: [{
+              message: {
+                content: response.refusal ? null : (response.content ?? '{}'),
+                ...(response.refusal ? { refusal: response.refusal } : {}),
+              },
+            }],
+            ...(response.usage !== undefined ? { usage: response.usage } : {}),
           }
         }),
       },
@@ -77,8 +95,8 @@ describe('streamAnswer — primary path (json_schema strict)', () => {
     expect(rf.json_schema.name).toBe('kb_response')
     expect(rf.json_schema.schema).toBe(CITATION_SCHEMA)
     expect(calls[0].stream).toBe(false)
-    expect(result.can_answer).toBe(true)
-    expect(result.citations[0].section_id).toBe('flagging-articles')
+    expect(result.response.can_answer).toBe(true)
+    expect(result.response.citations[0].section_id).toBe('flagging-articles')
   })
 
   it('prepends systemPrompt as the first message', async () => {
@@ -104,7 +122,7 @@ describe('streamAnswer — fallback path (json_object + Ajv)', () => {
     const rf = calls[0].response_format as { type: string; json_schema?: unknown }
     expect(rf.type).toBe('json_object')
     expect(rf).not.toHaveProperty('json_schema')
-    expect(result.can_answer).toBe(true)
+    expect(result.response.can_answer).toBe(true)
   })
 
   it('retries once on Ajv validation failure, then succeeds', async () => {
@@ -118,10 +136,10 @@ describe('streamAnswer — fallback path (json_object + Ajv)', () => {
       strictSchemaSupported: false,
     })
     expect(calls).toHaveLength(2) // first attempt failed, retry succeeded
-    expect(result.can_answer).toBe(true)
+    expect(result.response.can_answer).toBe(true)
   })
 
-  it('throws after two Ajv failures', async () => {
+  it('throws SchemaRejectAfterRetryError after two Ajv failures (typed, not generic)', async () => {
     const BAD_JSON = JSON.stringify({ not: 'valid' })
     const { client } = makeMockClient([
       { content: BAD_JSON },
@@ -131,8 +149,29 @@ describe('streamAnswer — fallback path (json_object + Ajv)', () => {
       streamAnswer({
         client, systemPrompt: 'sys', messages: [{ role: 'user', content: 'q' }],
         strictSchemaSupported: false,
+      }),
+    ).rejects.toBeInstanceOf(SchemaRejectAfterRetryError)
+  })
+
+  it('preserves diagnostic chain on SchemaRejectAfterRetryError (.cause carries both messages)', async () => {
+    const BAD_JSON = JSON.stringify({ not: 'valid' })
+    const { client } = makeMockClient([
+      { content: BAD_JSON },
+      { content: BAD_JSON },
+    ])
+    try {
+      await streamAnswer({
+        client, systemPrompt: 'sys', messages: [{ role: 'user', content: 'q' }],
+        strictSchemaSupported: false,
       })
-    ).rejects.toThrow(/streamAnswer json_object fallback failed twice/)
+      expect.fail('should have thrown')
+    } catch (err) {
+      expect(err).toBeInstanceOf(SchemaRejectAfterRetryError)
+      const e = err as SchemaRejectAfterRetryError
+      const causeMsg = (e.cause as Error)?.message ?? ''
+      expect(causeMsg).toContain('streamAnswer json_object fallback failed twice')
+      expect(causeMsg).toContain('Ajv validation failed')
+    }
   })
 })
 
@@ -166,7 +205,111 @@ describe('streamAnswer — env flag default (via Zod-validated env())', () => {
     await expect(
       streamAnswer({
         client, systemPrompt: 'sys', messages: [{ role: 'user', content: 'q' }],
-      })
+      }),
     ).rejects.toThrow(/Invalid env/)
+  })
+})
+
+describe('streamAnswer — refusal detection (Plan 2-03 Task 3.1, CONTEXT.md Q1)', () => {
+  it('throws RefusalError on strict path when message.refusal is a non-null string', async () => {
+    const { client, calls } = makeMockClient([{ refusal: 'policy violation' }])
+    await expect(
+      streamAnswer({
+        client, systemPrompt: 'sys', messages: [{ role: 'user', content: 'q' }],
+        strictSchemaSupported: true,
+      }),
+    ).rejects.toBeInstanceOf(RefusalError)
+    expect(calls).toHaveLength(1) // refusal short-circuits; no retry
+  })
+
+  it('RefusalError carries the raw refusal payload for log correlation', async () => {
+    const { client } = makeMockClient([{ refusal: 'policy violation: PII detected' }])
+    try {
+      await streamAnswer({
+        client, systemPrompt: 'sys', messages: [{ role: 'user', content: 'q' }],
+        strictSchemaSupported: true,
+      })
+      expect.fail('should have thrown')
+    } catch (err) {
+      expect(err).toBeInstanceOf(RefusalError)
+      expect((err as RefusalError).refusal).toBe('policy violation: PII detected')
+    }
+  })
+
+  it('throws RefusalError on fallback path (json_object) when refusal surfaces', async () => {
+    const { client, calls } = makeMockClient([{ refusal: 'safety filter' }])
+    await expect(
+      streamAnswer({
+        client, systemPrompt: 'sys', messages: [{ role: 'user', content: 'q' }],
+        strictSchemaSupported: false,
+      }),
+    ).rejects.toBeInstanceOf(RefusalError)
+    // Exactly ONE call — refusal on fallback MUST NOT trigger the Ajv retry
+    // loop (retrying a refusal changes nothing; the model refuses again).
+    expect(calls).toHaveLength(1)
+  })
+
+  it('throws RefusalError on fallback retry path when second attempt refuses', async () => {
+    const BAD_JSON = JSON.stringify({ not: 'valid' })
+    const { client, calls } = makeMockClient([
+      { content: BAD_JSON },
+      { refusal: 'refusing on retry' },
+    ])
+    await expect(
+      streamAnswer({
+        client, systemPrompt: 'sys', messages: [{ role: 'user', content: 'q' }],
+        strictSchemaSupported: false,
+      }),
+    ).rejects.toBeInstanceOf(RefusalError)
+    expect(calls).toHaveLength(2) // first Ajv failure → retry → refusal
+  })
+})
+
+describe('streamAnswer — usage extraction (Plan 2-03 Task 3.1 — feeds CONTEXT §5 log fields)', () => {
+  it('returns usage object when upstream surfaces prompt_tokens + completion_tokens', async () => {
+    const { client } = makeMockClient([
+      { content: VALID_RESPONSE_JSON, usage: { prompt_tokens: 123, completion_tokens: 45 } },
+    ])
+    const result = await streamAnswer({
+      client, systemPrompt: 'sys', messages: [{ role: 'user', content: 'q' }],
+      strictSchemaSupported: true,
+    })
+    expect(result.usage).toEqual({ prompt_tokens: 123, completion_tokens: 45 })
+  })
+
+  it('returns null when upstream omits the usage block entirely', async () => {
+    const { client } = makeMockClient([{ content: VALID_RESPONSE_JSON }]) // no usage field
+    const result = await streamAnswer({
+      client, systemPrompt: 'sys', messages: [{ role: 'user', content: 'q' }],
+      strictSchemaSupported: true,
+    })
+    expect(result.usage).toBeNull()
+  })
+
+  it('returns null when usage block is present but fields are non-numeric', async () => {
+    const { client } = makeMockClient([
+      {
+        content: VALID_RESPONSE_JSON,
+        // Simulate a proxy that strips numeric values
+        usage: { prompt_tokens: undefined, completion_tokens: 45 },
+      },
+    ])
+    const result = await streamAnswer({
+      client, systemPrompt: 'sys', messages: [{ role: 'user', content: 'q' }],
+      strictSchemaSupported: true,
+    })
+    expect(result.usage).toBeNull()
+  })
+
+  it('surfaces usage identically on fallback (json_object) path', async () => {
+    const { client } = makeMockClient([
+      { content: VALID_RESPONSE_JSON, usage: { prompt_tokens: 200, completion_tokens: 80 } },
+    ])
+    const result = await streamAnswer({
+      client, systemPrompt: 'sys', messages: [{ role: 'user', content: 'q' }],
+      strictSchemaSupported: false,
+    })
+    expect(result.usage).toEqual({ prompt_tokens: 200, completion_tokens: 80 })
+    expect(result.response.can_answer).toBe(true)
   })
 })

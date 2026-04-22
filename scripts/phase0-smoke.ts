@@ -117,9 +117,14 @@ async function smoke2_strictSchema(client: ReturnType<typeof createLlmClient>): 
     const messages: ChatMessage[] = [
       { role: 'user', content: '<user>What goes in the Short description field?</user>' },
     ]
-    const response = await streamAnswer({
+    const result = await streamAnswer({
       client, systemPrompt, messages, strictSchemaSupported: true,
     })
+    // Plan 2-03 Task 3.1: streamAnswer now returns {response, usage}. Unwrap
+    // the response for the existing shape-check logic; usage is available for
+    // future Phase-2 smoke enhancements that want to assert prompt/completion
+    // token bounds against the CONTEXT §5 log contract.
+    const response = result.response
     // Shape checks (not Ajv — we asserted those in Plan 01; here we just want to know
     // the endpoint returned json_schema-conforming data).
     const ok =
