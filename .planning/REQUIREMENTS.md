@@ -1,0 +1,240 @@
+# Requirements: KB Knowledge Assistant
+
+**Defined:** 2026-04-22
+**Core Value:** Every answer is verifiable against the authoritative SOP — users read the cited source section without leaving the conversation. No ungrounded answers, no invented field names or approver names.
+
+## v1 Requirements
+
+Requirements for initial pilot release. Each maps to a roadmap phase (see Traceability).
+
+### Authentication & Session (AUTH)
+
+- [ ] **AUTH-01**: Entra ID / Azure AD SSO gates entry before the role-select screen
+- [ ] **AUTH-02**: Conversation state is session-only (in-memory per tab); nothing persisted server-side
+- [ ] **AUTH-03**: SSO token flow works in both standalone web and Microsoft Teams tab contexts via Nested App Authentication (NAA)
+
+### Role Experience (ROLE)
+
+- [ ] **ROLE-01**: Role-select landing screen with two cards — "Knowledge Consumer" and "KB Author / SME" — shown after SSO
+- [ ] **ROLE-02**: Selected role persists for the session; "Change role" clears the conversation and returns to the role-select screen
+- [ ] **ROLE-03**: Role badge displayed in the chat header (green for Consumer, purple for Author)
+- [ ] **ROLE-04**: Role-aware greeting message displays on conversation start
+- [ ] **ROLE-05**: Role-specific suggested-prompt chips — 5 for Consumer, 8 for Author — sourced from handover §16
+
+### Conversation Interface (CHAT)
+
+- [ ] **CHAT-01**: Multi-turn chat interface with KB / Me avatars and message styling per handover §14
+- [ ] **CHAT-02**: Typing indicator (three animated dots) visible during in-flight response
+- [ ] **CHAT-03**: Stop-response button cancels an in-flight LLM call
+- [ ] **CHAT-04**: "New conversation" button clears chat without changing role (visually distinct from "Change role")
+- [ ] **CHAT-05**: Keyboard submit — `Enter` sends, `Shift+Enter` inserts newline
+- [ ] **CHAT-06**: Relative timestamp ("2m ago") shown on message hover, with absolute time as tooltip
+- [ ] **CHAT-07**: Error state with retry affordance when the LLM / MGTI ingress is unavailable or returns 5xx
+
+### Grounded Responses (GRND)
+
+- [ ] **GRND-01**: Full source text of KB0020882, KB0022991, and the ServiceNow form schema embedded verbatim into the system prompt (stuff-the-context grounding; no RAG)
+- [ ] **GRND-02**: Structured-output citation contract enforced — JSON schema with `strict: true`, shape `{ can_answer, answer, citations: [{ source_id, section_id, quote }] }`
+- [ ] **GRND-03**: Server-side quote-substring validation — every citation's `quote` must match the source registry; citations failing validation are stripped
+- [ ] **GRND-04**: Every answer emits at most one citation (one `source_id` + `section_id` per response)
+- [ ] **GRND-05**: System prompt is composed per-role via a single `composeSystemPrompt(role)` template; no divergent prompt trees
+- [ ] **GRND-06**: LLM client is env-driven — local dev uses direct OpenAI (Bearer auth); prod uses MGTI ingress (api-key auth). Zero `NODE_ENV` branching in application code
+- [ ] **GRND-07**: Response streaming supported, with `answer` streamed and `citations` held until completion to prevent mid-stream flicker from validator-stripped citations
+
+### Source Panel (PANE)
+
+- [ ] **PANE-01**: Right-side source panel (~256px wide), closed by default
+- [ ] **PANE-02**: Panel opens automatically to the cited section on the first cited assistant response
+- [ ] **PANE-03**: Panel content updates to the newly-cited section on each subsequent cited response
+- [ ] **PANE-04**: Panel header shows document badge, document name, and section name; body shows structured content matching the section
+- [ ] **PANE-05**: Document colour-coding applied per handover §14 (KB0020882 blue, KB0022991 amber, ServiceNow Form purple, Flagging/Lifecycle red, Publishing/Approval green, Attachments purple, Categories amber)
+- [ ] **PANE-06**: Panel footer includes "Open in ServiceNow ↗" link using the ServiceNow permalink URL (`https://mmcnow.service-now.com/kb_view.do?sysparm_article=...`)
+- [ ] **PANE-07**: Clicking a citation chip in a chat message re-opens and re-loads the panel to that source
+
+### Fallback & Gap Capture (FBK)
+
+- [ ] **FBK-01**: Out-of-scope fallback text rendered exactly per handover §15 — "That information isn't in the loaded documents yet. Flag the gap to the CTSS Knowledge team via KB0022991."
+- [ ] **FBK-02**: Fallback triggers when model returns `can_answer: false` OR when every citation fails substring validation
+- [ ] **FBK-03**: Fallback response has a visually distinct UI treatment (border, icon, or colour variation) so users don't mistake it for a grounded answer
+- [ ] **FBK-04**: "Flag a gap to the CTSS Knowledge team" one-click affordance rendered as part of the fallback — pre-populates a mailto/Teams link with the unanswered question
+
+### Feedback (FDBK)
+
+- [ ] **FDBK-01**: Thumbs 👍 / 👎 affordance on every assistant message
+- [ ] **FDBK-02**: 👎 opens a fixed-option dropdown — "hallucinated / wrong citation / incomplete / other" — with no free-text field in v1
+- [ ] **FDBK-03**: Feedback events captured to telemetry with `{ message_id, role, rating, citation_source_id, citation_section_id, reason? }`
+
+### Trust & Transparency (TRST)
+
+- [ ] **TRST-01**: Freshness / version indicator visible in the chat header or an "About this assistant" popover — e.g. "Grounded in KB0022991 v13.0 · KB0020882 v9.0 · Form schema 2026-04-15"
+- [ ] **TRST-02**: First-run dismissible "About this assistant" tooltip covers: what it answers, what it doesn't, what it's grounded in, how to flag a gap
+
+### Utility Actions (UTIL)
+
+- [ ] **UTIL-01**: Copy-answer button on each assistant message; copied text includes the citation string appended in the form `(Source: KB0022991 · Flagging Articles)`
+
+### Telemetry & Measurement (TELE)
+
+- [ ] **TELE-01**: Pre-registered telemetry schema documented and agreed before pilot launch (covers: session start/end, role selected, chip-vs-freeform, question hash, citation returned, citation-click-through, 👍/👎 rating + reason, fallback trigger, flag-a-gap action)
+- [ ] **TELE-02**: Anonymised logging — no raw user question text persisted; question hash only
+- [ ] **TELE-03**: Application Insights / OpenTelemetry integration collecting the above schema
+- [ ] **TELE-04**: Documented process for monthly pull of rejected / flagged KB article rate from ServiceNow — named Content Steward, cadence, data source (knowledge feedback tasks + article workflow state)
+
+### Content & Corpus Management (CORP)
+
+- [ ] **CORP-01**: Source text versioned as files in the repo; SOP updates land via PR; redeploy propagates the change
+- [ ] **CORP-02**: Entity allowlist (approvers list, KB numbers, ServiceNow URLs) validated post-response — any response containing an entity not on the allowlist is flagged for review
+
+### Delivery & Hosting (DELV)
+
+- [ ] **DELV-01**: Deployed to MMC-sanctioned Azure App Service (Linux, Node 20.9+)
+- [ ] **DELV-02**: Standalone web app reachable via an MMC corporate URL with Entra ID SSO
+- [ ] **DELV-03**: Microsoft Teams tab package (schema 1.22 manifest with `webApplicationInfo.nestedAppAuthInfo` + `brk-multihub://` redirect URI) sharing the web codebase
+- [ ] **DELV-04**: CI/CD pipeline (GitHub Actions or Azure DevOps) deploying from the main branch
+
+---
+
+## v2 Requirements
+
+Deferred to v1.1 / v2. Tracked but not in the current pilot roadmap. Most depend on v1 telemetry existing first so that lift can be attributed.
+
+### Author-Lint Features (AUTHLINT)
+
+- **AUTHLINT-01**: Naming-convention linter chip — paste Short description, assistant checks against 160-char 4-part rule (handover §6). Highest Author-metric lever.
+- **AUTHLINT-02**: Resolution-field completeness check chip — paste Resolution text, assistant checks against §7 checklist (Software 11-point or Support-process 7-point) with ✅/❌ per item.
+- **AUTHLINT-03**: Security-rule check (no passwords, no external download links) as part of the Resolution lint.
+- **AUTHLINT-04**: Pre-submit full-form check — structured paste of title + fields + resolution, single combined lint report.
+
+### Conversation UX (CONV)
+
+- **CONV-01**: Suggested follow-up prompts (2–3) after each assistant message, role-aware and grounded.
+- **CONV-02**: Session-download / "save this conversation as .md" (client-side only, no server persistence).
+- **CONV-03**: Conversation-level continuity — `last_active_citation` carried into system prompt for "and then what?" style follow-ups.
+- **CONV-04**: Summarise-a-section mode ("summarise the Retirement section of KB0022991").
+
+### Per-Citation Feedback (CITFDBK)
+
+- **CITFDBK-01**: 👍/👎 on individual citation chips (distinct from answer-level feedback) — disambiguates hallucinated citations from correct-answer-wrong-citation.
+
+### Approver / Role Directory (DIR)
+
+- **DIR-01**: SME / approver directory lookup as a first-class chip (data already in handover §8) — surface as dedicated chip.
+
+### Trust Enhancements (TRST+)
+
+- **TRST-03**: Hoverable freshness badge on each cited chunk (version + revised-by + last-changed-date).
+
+### Admin & Ops (ADMIN)
+
+- **ADMIN-01**: Admin preview mode (`?admin=1`-gated view showing live system-prompt version + last-embed timestamp); access gated by Entra group membership.
+- **ADMIN-02**: Rate-limit / cost-ceiling UX — visible soft-limit and admin alert when daily token spend exceeds threshold.
+
+### Gated on Content (CONT)
+
+- **CONT-01**: "Show me an example article" chip and panel content — blocked by handover §19 gap (sanctioned example articles not yet provided). Surface as "coming soon" in UI until content lands.
+
+### Feedback Depth (FDBK+)
+
+- **FDBK-04**: Free-text comment on 👎 — enabled only after PII-scrubbing pipeline is battle-tested.
+
+---
+
+## Out of Scope
+
+Explicitly excluded for v1. Documented to prevent scope creep.
+
+### From Handover / Project Decisions
+
+| Feature | Reason |
+|---------|--------|
+| Adaptive Learning Path (handover §17, "Idea 3") | Separate initiative; deferred to a later milestone |
+| ServiceNow write-back (create / edit / publish from assistant) | Out of product scope; users continue authoring in ServiceNow itself |
+| RAG / vector retrieval | Corpus is 3 docs, fits in 128K context; stuff-the-context is simpler and more reliable for citations |
+| Multi-language support | English only; default Language field per form schema |
+| Non-Colleague-Technology knowledge bases | This assistant is scoped to one KB |
+| Per-user conversation history | Session-only — removes PII / retention / compliance surface |
+| Scheduled sync from ServiceNow | Manual re-embed per SOP release is sufficient at 3 docs |
+| Broad launch in v1 | Pilot cohort only; GA is a post-pilot decision |
+
+### From Category Anti-Features (research-surfaced)
+
+| Feature | Reason |
+|---------|--------|
+| AI-generated article drafts from tickets (Now Assist-style) | Different product problem; undermines citation-discipline foundation |
+| "Suggest improvements to my article" agentic actions | No write-back target; degenerates into unactionable advice |
+| Multi-KB expansion ("add HR, add Security") | Stuff-the-context breaks at scale; needs RAG + permissions model |
+| Conversational "regenerate" button | Undermines single-correct-citation premise; users click until preferred answer |
+| Real-time co-authoring | Requires shared state; violates session-only design |
+| Live ServiceNow RAG / smart search | Invalidates grounding model; would need ServiceNow Can-Read permissions integration |
+| Proactive notifications ("your article is stuck") | Requires server-side user state + ServiceNow read integration |
+| Image / diagram generation | High hallucination risk on business processes; violates "never invent" |
+| Prompt autocomplete / rephrasing | Suggests prompts the system can't answer; widens fallback surface |
+| "Trust my judgement" override that bypasses grounding | Destroys the core value of the product |
+| Free-text 👎 comment in v1 | Uncontrolled free-text ingestion before PII-scrubbing is hardened |
+
+---
+
+## Traceability
+
+Filled in during roadmap creation. Each v1 requirement maps to exactly one phase.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| AUTH-01 | TBD | Pending |
+| AUTH-02 | TBD | Pending |
+| AUTH-03 | TBD | Pending |
+| ROLE-01 | TBD | Pending |
+| ROLE-02 | TBD | Pending |
+| ROLE-03 | TBD | Pending |
+| ROLE-04 | TBD | Pending |
+| ROLE-05 | TBD | Pending |
+| CHAT-01 | TBD | Pending |
+| CHAT-02 | TBD | Pending |
+| CHAT-03 | TBD | Pending |
+| CHAT-04 | TBD | Pending |
+| CHAT-05 | TBD | Pending |
+| CHAT-06 | TBD | Pending |
+| CHAT-07 | TBD | Pending |
+| GRND-01 | TBD | Pending |
+| GRND-02 | TBD | Pending |
+| GRND-03 | TBD | Pending |
+| GRND-04 | TBD | Pending |
+| GRND-05 | TBD | Pending |
+| GRND-06 | TBD | Pending |
+| GRND-07 | TBD | Pending |
+| PANE-01 | TBD | Pending |
+| PANE-02 | TBD | Pending |
+| PANE-03 | TBD | Pending |
+| PANE-04 | TBD | Pending |
+| PANE-05 | TBD | Pending |
+| PANE-06 | TBD | Pending |
+| PANE-07 | TBD | Pending |
+| FBK-01 | TBD | Pending |
+| FBK-02 | TBD | Pending |
+| FBK-03 | TBD | Pending |
+| FBK-04 | TBD | Pending |
+| FDBK-01 | TBD | Pending |
+| FDBK-02 | TBD | Pending |
+| FDBK-03 | TBD | Pending |
+| TRST-01 | TBD | Pending |
+| TRST-02 | TBD | Pending |
+| UTIL-01 | TBD | Pending |
+| TELE-01 | TBD | Pending |
+| TELE-02 | TBD | Pending |
+| TELE-03 | TBD | Pending |
+| TELE-04 | TBD | Pending |
+| CORP-01 | TBD | Pending |
+| CORP-02 | TBD | Pending |
+| DELV-01 | TBD | Pending |
+| DELV-02 | TBD | Pending |
+| DELV-03 | TBD | Pending |
+| DELV-04 | TBD | Pending |
+
+**Coverage:**
+- v1 requirements: 49 total
+- Mapped to phases: 0 (populated during roadmap creation)
+- Unmapped: 49 ⚠️ (will resolve to 0 after roadmap)
+
+---
+*Requirements defined: 2026-04-22*
+*Last updated: 2026-04-22 after initial definition*
