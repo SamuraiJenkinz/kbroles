@@ -66,7 +66,13 @@ Plans:
 
 **Pitfall focus**: Pitfall 2 (validator is the deterministic guard), Pitfall 5 (server refuses to re-narrate a "workaround" — fallback wording enforced), Pitfall 6 (allowlist post-check), Pitfall 7 (user text never flows into trusted system-prompt slots), Pitfall 11 (ingress auth quirks caught here too), Pitfall 12 (429 handling + exponential backoff)
 
-**Plans**: TBD (likely 3–4)
+**Plans**: 4 plans
+
+Plans:
+- [x] 01-infra-ops-setup-PLAN.md — Close Phase-1 carry-forward entry gates: .env handling ops doc, prod-mode Phase-0 smoke (checkpoint), install pino + serverExternalPackages, stub auth middleware, logger module (complete 2026-04-22)
+- [x] 02-chat-primitives-PLAN.md — Pure library units: SSE types + encoder, partial-JSON answer tracker, entity allowlist post-check, AsyncSemaphore, request schema parser, SUGGESTED_PROMPTS (13 chips) (complete 2026-04-22)
+- [ ] 03-upstream-resilience-PLAN.md — Extend streamAnswer: typed error classes, explicit refusal detection, bounded retry wrapper (429/5xx/network), AbortSignal total-timeout hook, inter-chunk v1.1 deferral
+- [ ] 04-route-wiring-PLAN.md — POST /api/chat SSE pipeline, GET /api/prompts, route-level Vitest tests, docs/api-chat-contract.md for Phase-3 hand-off
 
 ---
 
@@ -162,7 +168,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Grounding Foundation | 5/5 | Complete | 2026-04-22 |
-| 2. Chat Backend (BFF) | 0/TBD | Not started | - |
+| 2. Chat Backend (BFF) | 2/4 | In progress (Wave 1 complete; Wave 2 Plans 03/04 pending) | - |
 | 3. Role Experience & Chat UI | 0/TBD | Not started | - |
 | 4. Source Panel, Trust & Fallback UI | 0/TBD | Not started | - |
 | 5. SSO & Teams Delivery | 0/TBD | Not started | - |
