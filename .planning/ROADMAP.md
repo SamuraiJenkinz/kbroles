@@ -38,7 +38,14 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 **Pitfall focus**: Pitfall 2 (citation drift — quote validator), Pitfall 10 (ingress streaming cadence), Pitfall 11 (ingress auth break — dual-mode factory), Pitfall 6 (fabricated entities — allowlist extracted here), Pitfall 7 (prompt-injection-resistant system prompt design)
 
-**Plans**: TBD (likely 4–5)
+**Plans**: 5 plans
+
+Plans:
+- [ ] 01-scaffold-registry-schema-PLAN.md — Scaffold Next.js project; ship source registry, citation schema, entity allowlist
+- [ ] 02-citation-validator-PLAN.md — Quote-substring validator with fallback flip on total strip
+- [ ] 03-llm-client-factory-PLAN.md — Dual-mode createLlmClient() + streamAnswer() facade with strict-mode fallback
+- [ ] 04-system-prompt-composer-PLAN.md — Role-aware composeSystemPrompt() with layered constants, snapshot-tested
+- [ ] 05-phase0-smoke-PLAN.md — Phase-0 smoke harness against dev OpenAI and MGTI ingress; evidence doc
 
 ---
 
