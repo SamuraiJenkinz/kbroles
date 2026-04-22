@@ -11,26 +11,26 @@ See: .planning/ROADMAP.md (6 phases, standard depth)
 
 ## Current Position
 
-Phase: 2 of 6 (Chat Backend BFF)
-Plan: Plans 1 (infra-ops-setup), 2 (chat-primitives), 3 (upstream-resilience) — ALL COMPLETE; Plan 4 (route-wiring) pending
-Status: Wave 2a complete — Plan 03 green (3 tasks autonomous, 187/187 tests). Phase 2 entry gate remains PROD-MODE GREEN — Plan 04 UNBLOCKED and now has all typed errors + retry + signal plumbing it needs to compose.
-Last activity: 2026-04-22 — Plan 03 complete (3 tasks across ~10 min active; 3 feat commits 574e1f7 / 0e0acc2 / f0b2313 + pending docs metadata commit; 50 new tests: 13 errors + 17 stream additions + 13 retry + 8 env; 187/187 green); SUMMARY at .planning/phases/02-chat-backend-bff/02-03-SUMMARY.md
+Phase: 2 of 6 (Chat Backend BFF) — COMPLETE
+Plan: Plans 1 (infra-ops-setup), 2 (chat-primitives), 3 (upstream-resilience), 4 (route-wiring) — ALL COMPLETE
+Status: Phase 2 complete — all 5 Success Criteria closed. 223/223 tests green. POST /api/chat + GET /api/prompts shipped; docs/api-chat-contract.md authored for Phase-3 hand-off. Phase 3 (chat-ui) UNBLOCKED.
+Last activity: 2026-04-22 — Plan 04 complete (3 tasks autonomous across ~15 min active; 3 commits a5f33ab / 2792c5c / 2559121 + pending docs metadata commit; 36 new tests: 10 prompts-route + 26 chat-route; 223/223 green); SUMMARY at .planning/phases/02-chat-backend-bff/02-04-SUMMARY.md
 
-Progress: [██████████████░░] Phase 1 of 6 complete; Phase 2 Plans 01 + 02 + 03 complete — 3 of 4 plans shipped; Plan 04 pending
+Progress: [████████████████] Phase 1 of 6 complete; Phase 2 of 6 complete — all 4 plans shipped
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
-- Average duration: ~7.2 min active
-- Total execution time: ~66 min active (Plan 01 wall-clock includes ~1h 44min human-loop prod-smoke checkpoint)
+- Total plans completed: 9
+- Average duration: ~7.9 min active
+- Total execution time: ~81 min active (Plan 01 wall-clock includes ~1h 44min human-loop prod-smoke checkpoint)
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1 — Grounding Foundation | 5 / 5 (complete) | ~31 min | ~6 min |
-| 2 — Chat Backend BFF     | 3 / 4 (Plans 01 + 02 + 03 complete; Plan 04 pending) | ~35 min active | ~11.7 min |
+| 2 — Chat Backend BFF     | 4 / 4 (complete) | ~50 min active | ~12.5 min |
 
 **Recent Trend:**
 - 01-scaffold-registry-schema: 7 min, 8 tasks, 6 feat commits + 1 docs metadata commit, 23/23 tests green
@@ -41,6 +41,7 @@ Progress: [██████████████░░] Phase 1 of 6 comple
 - 02-02-chat-primitives: 8 min active, 3 tasks autonomous (no checkpoints), 3 feat commits 81b2410 / 83c3a2b / 6a42198 + pending docs metadata commit, 134/134 tests green (40 new: 6 sse + 13 partialAnswer + 7 allowlist + 8 concurrency + 6 env + 14 requestSchema + 8 suggested; also absorbed 2 logger tests from parallel Plan 01); 6 source modules + entities.ts regex widening + env schema extension
 - 02-01-infra-ops-setup: 17 min active (2 sessions across prod-smoke human checkpoint, wall-clock ~2h 24min); 3 tasks, 1 checkpoint:human-verify (Task 1.1 prod-mode smoke gate); 4 commits d9b5f34 / fd373dd / 60d7aca / b12a77c + pending docs metadata; 137/137 tests green (5 new — but 2 logger tests were already counted in Plan 02's 134 due to wave-1 parallel absorption); pino 10.3.1 + pino-pretty 13.1.3 in deps; Phase 2 entry gate PROD-MODE GREEN — Plan 04 UNBLOCKED
 - 02-03-upstream-resilience: ~10 min active; 3 tasks autonomous (no checkpoints); 3 feat commits 574e1f7 / 0e0acc2 / f0b2313 + pending docs metadata commit; 187/187 tests green (50 new: 13 errors + 17 stream additions + 13 retry + 8 env); src/llm/errors.ts added (five typed error classes + isRetryableUpstream); streamAnswer extended with {response, usage} shape + withRetry wrapper + AbortSignal hook; env.ts extended with four UPSTREAM_* knobs; v1.1 inter-chunk deferral marker with drift-guard test; zero new dependencies
+- 02-04-route-wiring: ~15 min active; 3 tasks autonomous (no checkpoints); 3 commits a5f33ab (feat prompts route) / 2792c5c (feat chat route) / 2559121 (docs client contract) + pending docs metadata commit; 223/223 tests green (36 new: 10 prompts-route + 26 chat-route); src/app/api/chat/route.ts + src/app/api/prompts/route.ts + docs/api-chat-contract.md shipped; all 5 Phase-2 SCs closed with dedicated coverage; zero new dependencies
 
 *Updated after each plan completion*
 
@@ -132,6 +133,19 @@ Decisions are logged in PROJECT.md Key Decisions table. Load-bearing decisions a
 | 02-03 | runWithFakeTimers test helper attaches pre-emptive `.catch(()=>{})` to the promise | Silences Node PromiseRejectionHandledWarning in the gap between promise creation and the test's `.rejects` handler attachment. Real rejection still propagates (promises cache both states). |
 | 02-03 | v1.1 inter-chunk deferral guarded by drift-guard test (readFileSync + toContain) | CONTEXT §3 locks 20s inter-chunk timeout; facade is `stream: false` today so there's no chunk sequence to time. Test ensures the TODO marker can't be silently removed without landing the feature. |
 
+**Plan 02-04 decisions (route-wiring):**
+
+| Plan  | Decision | Rationale |
+|-------|----------|-----------|
+| 02-04 | makeAnswerTracker() consumes a synthetic `{"answer":"<text>"}` JSON envelope in Phase-2 stream:false facade | Keeps the tracker call-site identical across Phase-2 (one delta) and v1.1 (many deltas). Without the envelope the route would need a Phase-2-only code path `writer.write(encodeSse({type:'answer_delta', text: validated.answer}))` that gets deleted in v1.1 — more churn for no benefit. |
+| 02-04 | X-Request-Id echoed on EVERY response including pre-stream 4xx/5xx | Operators can correlate client-side bug reports ("I got a 400") to server logs without client-side special-casing of 4xx observability. Low-cost hardening (~36 bytes/response). |
+| 02-04 | UpstreamAuthError → wire `error{code:'internal'}` but log `ingress_status_code={401\|403}` | Don't leak credential state to the browser (security hygiene + Pitfall 7), but preserve exact ingress failure code for operators triaging Pitfall 11 (ingress auth break). Wire code 'internal' signals "don't auto-retry"; log code signals "Entra/MGTI broke". |
+| 02-04 | Malformed JSON body → `{error:'messages_missing'}` rather than adding a 9th code | 02-CONTEXT.md §4.1 locks 8 error codes. Adding a 9th would require contract + docs + test updates. messages_missing is semantically correct (unparseable body ≡ messages absent). Client UX unchanged. |
+| 02-04 | Route-level tests mock streamAnswer at module level via vi.hoisted; no real createLlmClient touched | Every primitive is unit-tested in isolation (187 tests pre-existing). Route tests verify orchestration only — event ordering, log shape, error switch, semaphore discipline. One failure surface per test = hermetic results. |
+| 02-04 | IIFE has exactly ONE `log.info(...)` call-site per request (in terminal finally) | Auditing "no raw user-question text in logs" is O(1) — one call-site to review. Multiple log.info calls would multiply the regression surface where future refactor accidentally pivots req.body/answer into extras. |
+| 02-04 | /api/prompts uses `dynamic='force-static'` vs /api/chat's `force-dynamic` | /api/prompts body is a pure function of SUGGESTED_PROMPTS[role] — cacheable. /api/chat is per-request SSE — uncacheable. Different runtime semantics within same API dir is legal + clarifying in Next.js. |
+| 02-04 | vi.hoisted factory pattern for capturing pino instance shared across vi.mock factories | vi.mock factories are hoisted above ordinary top-level declarations; referencing `capturingLogger` defined at test-file top-level throws `ReferenceError: Cannot access X before initialization`. vi.hoisted() guarantees state is initialised before any vi.mock factory runs. Canonical Vitest pattern for shared-state mocks. |
+
 **Plan 05 decisions (Phase-0 findings that constrain Phase 2):**
 
 | Plan | Decision | Rationale |
@@ -168,11 +182,11 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-22 — Phase 2 Plan 03 complete (3 tasks autonomous, ~10 min active). Three atomic feat commits 574e1f7 / 0e0acc2 / f0b2313 + pending docs metadata commit. 187/187 tests green. SUMMARY at .planning/phases/02-chat-backend-bff/02-03-SUMMARY.md.
-Stopped at: Phase 2 Plans 01 + 02 + 03 complete; Plan 04 (route-wiring) is the final Phase 2 plan. All primitives ready: typed errors (UpstreamTimeoutError, Upstream5xxError, SchemaRejectAfterRetryError, RefusalError, UpstreamAuthError), retry wrapper, AbortSignal plumbing, logger, semaphore, SSE types, parseChatRequest, ENTITY_ALLOWLIST.
+Last session: 2026-04-22 — Phase 2 Plan 04 complete (3 tasks autonomous, ~15 min active). Three atomic commits a5f33ab (feat prompts) / 2792c5c (feat chat) / 2559121 (docs contract) + pending docs metadata commit. 223/223 tests green (36 new: 10 prompts + 26 chat). SUMMARY at .planning/phases/02-chat-backend-bff/02-04-SUMMARY.md. Phase 2 CLOSES: 4 of 4 plans shipped; all 5 Success Criteria closed.
+Stopped at: Phase 2 complete. Phase 3 (chat-ui) is the next plan — unblocked; consumers build against docs/api-chat-contract.md alone without `.planning/` reads. The reference TypeScript snippet in §8 of that doc is copy-paste starter code for the Phase-3 `useChatStream` hook.
 Resume signals (next session):
-  - "execute plan 04" → spawn Plan 04 execution (route-wiring); composes all primitives from Plans 01 + 02 + 03; entry gate is GREEN
-  - Plan 04 route switch pattern: `switch(err.name)` discriminates on typed error classes from src/llm/errors.ts; AbortController with `setTimeout(() => ac.abort(), env().UPSTREAM_TOTAL_TIMEOUT_MS)` wires the total-timeout
+  - "execute phase 3" or "plan phase 3" → spawn Phase 3 planning (chat-ui) based on ROADMAP.md Phase 3 scope. Entry artifacts ready: /api/chat SSE contract, /api/prompts chip endpoint, docs/api-chat-contract.md.
+  - Phase 3 dependencies: React 19 (already in package.json), Next.js 16 App Router (already configured), Tailwind (Phase 3 will add).
 Resume file: None
 
 **Deferred work tracked for v1.1 (post-Phase 2):**
