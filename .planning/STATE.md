@@ -12,25 +12,25 @@ See: .planning/ROADMAP.md (6 phases, standard depth)
 ## Current Position
 
 Phase: 2 of 6 (Chat Backend BFF)
-Plan: Plan 1 (infra-ops-setup) — COMPLETE; Plan 2 (chat-primitives) — COMPLETE; Plans 3 + 4 pending
-Status: Wave 1 complete (Plans 01 + 02 both green). Phase 2 entry gate PROD-MODE GREEN — Plan 04 UNBLOCKED. Ready to plan/execute Plans 03 (upstream-resilience) and 04 (route-wiring).
-Last activity: 2026-04-22 — Plan 01 complete end-to-end (3 tasks across 2 sessions spanning the prod-smoke checkpoint; 4 feat/docs commits d9b5f34 / fd373dd / 60d7aca / b12a77c + pending docs metadata commit; 5 new unit tests; 137/137 green); SUMMARY at .planning/phases/02-chat-backend-bff/02-01-SUMMARY.md
+Plan: Plans 1 (infra-ops-setup), 2 (chat-primitives), 3 (upstream-resilience) — ALL COMPLETE; Plan 4 (route-wiring) pending
+Status: Wave 2a complete — Plan 03 green (3 tasks autonomous, 187/187 tests). Phase 2 entry gate remains PROD-MODE GREEN — Plan 04 UNBLOCKED and now has all typed errors + retry + signal plumbing it needs to compose.
+Last activity: 2026-04-22 — Plan 03 complete (3 tasks across ~10 min active; 3 feat commits 574e1f7 / 0e0acc2 / f0b2313 + pending docs metadata commit; 50 new tests: 13 errors + 17 stream additions + 13 retry + 8 env; 187/187 green); SUMMARY at .planning/phases/02-chat-backend-bff/02-03-SUMMARY.md
 
-Progress: [████████████░░░░] Phase 1 of 6 complete; Phase 2 Wave 1 (Plans 01 + 02) complete — 2 of 4 plans shipped; Plans 03 + 04 pending
+Progress: [██████████████░░] Phase 1 of 6 complete; Phase 2 Plans 01 + 02 + 03 complete — 3 of 4 plans shipped; Plan 04 pending
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: ~6.9 min active
-- Total execution time: ~56 min active (Plan 01 wall-clock includes ~1h 44min human-loop prod-smoke checkpoint)
+- Total plans completed: 8
+- Average duration: ~7.2 min active
+- Total execution time: ~66 min active (Plan 01 wall-clock includes ~1h 44min human-loop prod-smoke checkpoint)
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1 — Grounding Foundation | 5 / 5 (complete) | ~31 min | ~6 min |
-| 2 — Chat Backend BFF     | 2 / 4 (Plans 01 + 02 complete; Plans 03/04 pending) | ~25 min active | ~12.5 min |
+| 2 — Chat Backend BFF     | 3 / 4 (Plans 01 + 02 + 03 complete; Plan 04 pending) | ~35 min active | ~11.7 min |
 
 **Recent Trend:**
 - 01-scaffold-registry-schema: 7 min, 8 tasks, 6 feat commits + 1 docs metadata commit, 23/23 tests green
@@ -40,6 +40,7 @@ Progress: [████████████░░░░] Phase 1 of 6 comple
 - 05-phase0-smoke: ~15 min active + user-loop, 7 tasks (5 committed + 1 verify-only + 1 deferred prod checkpoint), 1 feat + 1 test + 2 docs commits + 2 orchestrator fixes + 1 plan-metadata commit, 70/70 tests green (5 new CLI parser); dev-mode Smokes 1/2/3 PASS; prod deferred
 - 02-02-chat-primitives: 8 min active, 3 tasks autonomous (no checkpoints), 3 feat commits 81b2410 / 83c3a2b / 6a42198 + pending docs metadata commit, 134/134 tests green (40 new: 6 sse + 13 partialAnswer + 7 allowlist + 8 concurrency + 6 env + 14 requestSchema + 8 suggested; also absorbed 2 logger tests from parallel Plan 01); 6 source modules + entities.ts regex widening + env schema extension
 - 02-01-infra-ops-setup: 17 min active (2 sessions across prod-smoke human checkpoint, wall-clock ~2h 24min); 3 tasks, 1 checkpoint:human-verify (Task 1.1 prod-mode smoke gate); 4 commits d9b5f34 / fd373dd / 60d7aca / b12a77c + pending docs metadata; 137/137 tests green (5 new — but 2 logger tests were already counted in Plan 02's 134 due to wave-1 parallel absorption); pino 10.3.1 + pino-pretty 13.1.3 in deps; Phase 2 entry gate PROD-MODE GREEN — Plan 04 UNBLOCKED
+- 02-03-upstream-resilience: ~10 min active; 3 tasks autonomous (no checkpoints); 3 feat commits 574e1f7 / 0e0acc2 / f0b2313 + pending docs metadata commit; 187/187 tests green (50 new: 13 errors + 17 stream additions + 13 retry + 8 env); src/llm/errors.ts added (five typed error classes + isRetryableUpstream); streamAnswer extended with {response, usage} shape + withRetry wrapper + AbortSignal hook; env.ts extended with four UPSTREAM_* knobs; v1.1 inter-chunk deferral marker with drift-guard test; zero new dependencies
 
 *Updated after each plan completion*
 
@@ -115,6 +116,22 @@ Decisions are logged in PROJECT.md Key Decisions table. Load-bearing decisions a
 | 02-02 | Release clamped to initialCap — stray double-release cannot inflate capacity | Defensive correctness: a double-release bug in route handler's finally block would otherwise permanently raise the cap. Clamping means a bug causes momentary over-permit-by-zero but never capacity leak. |
 | 02-02 | chatSemaphore exported as wrapper object (tryAcquire/release/available) not direct AsyncSemaphore instance | Wrapper lets __resetForTests swap the underlying instance transparently — callers hold a stable reference that always routes to the current instance. |
 
+**Plan 02-03 decisions (upstream-resilience):**
+
+| Plan  | Decision | Rationale |
+|-------|----------|-----------|
+| 02-03 | StreamAnswerResult exposes usage as `{prompt_tokens, completion_tokens} \| null` — null when upstream omits the block | Some upstream proxies strip completion.usage; logging should still emit the record with usage:null rather than fail or drop. Plan 04's CONTEXT §5 log emitter treats null as "unknown" and still emits. |
+| 02-03 | Refusal short-circuits the Ajv retry loop on fallback path | Retrying a safety-filter refusal produces no new information — the model refuses again. Saves an upstream round-trip and produces a crisper error surface for route-side fallback{reason:'refusal'}. |
+| 02-03 | SchemaRejectAfterRetryError carries original Error via .cause (not message string) | Preserves stack + diagnostic for log-site inspection; route code reads err.cause.message only when detail is needed. |
+| 02-03 | Abort-originated errors must propagate through the Ajv retry loop (isAbortLike guard on both firstErr and retryErr) | Critical: the Ajv fallback retry bypasses withRetry's signal check entirely. Without the guard, an abort in tryOnce() would be treated as a retryable schema failure and the second tryOnce() call would fire even after the route has given up. |
+| 02-03 | Upstream-retry loop (withRetry) is ORTHOGONAL to Ajv schema-reject retry — both loops coexist | They address different failure modes: withRetry retries HTTP errors (429/5xx/network); the Ajv loop retries schema validation failures. Keeping them separate means neither has to understand the other's failure semantics. |
+| 02-03 | withRetry() kept module-private; tests exercise retry policy through streamAnswer | Tests assert observable contract (call counts, thrown types, timing) rather than helper internals. Makes the retry policy an implementation detail that can evolve without churning test suites. |
+| 02-03 | Backoff timing test uses a single "generous window" advance instead of fine-grained microtask boundaries | `vi.advanceTimersByTimeAsync` drains pending microtasks along with timers; tight ms boundaries (+399 / +2) are flaky when multiple retry-continuation microtasks land together. Single +500ms advance proves the >baseMs*2 requirement deterministically. |
+| 02-03 | Non-retryable auth statuses 401/403 reclassify to UpstreamAuthError inside withRetry | Typed for route-side routing (PITFALLS #11 ingress auth break mitigation). Route can alert on auth break distinct from other 4xx. |
+| 02-03 | 422 is NOT reclassified as UpstreamAuthError — propagates raw | Test explicitly asserts `expect(err).not.toBeInstanceOf(UpstreamAuthError)` on 422. Route treats 422 as upstream request-validation failure (input-shape error) distinct from auth break. |
+| 02-03 | runWithFakeTimers test helper attaches pre-emptive `.catch(()=>{})` to the promise | Silences Node PromiseRejectionHandledWarning in the gap between promise creation and the test's `.rejects` handler attachment. Real rejection still propagates (promises cache both states). |
+| 02-03 | v1.1 inter-chunk deferral guarded by drift-guard test (readFileSync + toContain) | CONTEXT §3 locks 20s inter-chunk timeout; facade is `stream: false` today so there's no chunk sequence to time. Test ensures the TODO marker can't be silently removed without landing the feature. |
+
 **Plan 05 decisions (Phase-0 findings that constrain Phase 2):**
 
 | Plan | Decision | Rationale |
@@ -151,10 +168,14 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-22 — Phase 2 Wave 1 complete (Plans 01 + 02 both green). Plan 01 Task 1.1 checkpoint resumed on `prod-smoke-green` signal; all three Plan 01 tasks committed, SUMMARY authored, STATE updated.
-Stopped at: Phase 2 Plans 01 + 02 complete; Plans 03 (upstream-resilience) and 04 (route-wiring) ready to plan/execute in Wave 2.
+Last session: 2026-04-22 — Phase 2 Plan 03 complete (3 tasks autonomous, ~10 min active). Three atomic feat commits 574e1f7 / 0e0acc2 / f0b2313 + pending docs metadata commit. 187/187 tests green. SUMMARY at .planning/phases/02-chat-backend-bff/02-03-SUMMARY.md.
+Stopped at: Phase 2 Plans 01 + 02 + 03 complete; Plan 04 (route-wiring) is the final Phase 2 plan. All primitives ready: typed errors (UpstreamTimeoutError, Upstream5xxError, SchemaRejectAfterRetryError, RefusalError, UpstreamAuthError), retry wrapper, AbortSignal plumbing, logger, semaphore, SSE types, parseChatRequest, ENTITY_ALLOWLIST.
 Resume signals (next session):
-  - "execute plan 03" → spawn Plan 03 execution (upstream-resilience); uses Plan 02's SseEvent error codes + Plan 01's logger
-  - "execute plan 04" → spawn Plan 04 execution (route-wiring); composes all primitives from Plans 01 + 02 + 03; entry gate is now GREEN so route code can commit
-  - Plan 03 + Plan 04 can run in sequence (Plan 04 depends on Plan 03's typed error classes + retry wrapper) or Plan 03 alone first
+  - "execute plan 04" → spawn Plan 04 execution (route-wiring); composes all primitives from Plans 01 + 02 + 03; entry gate is GREEN
+  - Plan 04 route switch pattern: `switch(err.name)` discriminates on typed error classes from src/llm/errors.ts; AbortController with `setTimeout(() => ac.abort(), env().UPSTREAM_TOTAL_TIMEOUT_MS)` wires the total-timeout
 Resume file: None
+
+**Deferred work tracked for v1.1 (post-Phase 2):**
+- Convert streamAnswer from `stream: false` to `stream: true` with per-chunk writer
+- Re-implement 20s inter-chunk idle timeout via chunk-resettable timer (see src/llm/stream.ts TODO marker + Plan 1-05 / Plan 2-01 baselines)
+- Distinct `InterChunkTimeoutError` class for provenance differentiation from total-timeout
