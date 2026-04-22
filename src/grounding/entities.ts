@@ -4,13 +4,17 @@ import { REGISTRY } from '@/grounding/registry'
 // Permissive by design — false positives on title-case noun phrases are
 // acceptable (allowlist matches fail open — extra names are harmless).
 // False negatives (real approvers missed) would be catastrophic.
-const NAME_RE  = /\b([A-Z][a-z]+(?:-[A-Z][a-z]+)?\s+[A-Z][a-z]+(?:-[A-Z][a-z]+)?)\b/g
+//
+// Exported so that the Phase-2 allowlist post-check (src/chat/allowlist.ts)
+// can reuse these patterns verbatim — single source of truth, no duplicate
+// regex definitions in the repo. Plan 02 Task 2.2 authorised the widening.
+export const NAME_RE  = /\b([A-Z][a-z]+(?:-[A-Z][a-z]+)?\s+[A-Z][a-z]+(?:-[A-Z][a-z]+)?)\b/g
 // KB IDs observed in the corpus vary in digit count (KB0020882 is 7 digits,
 // the ServiceNow form sample record KB18801781 is 8). Using \d{5,} keeps the
 // match loose enough to capture both without over-matching short
 // non-KB-number tokens.
-const KB_ID_RE = /\bKB\d{5,}\b/g
-const URL_RE   = /https?:\/\/[^\s<>"'\]]+/g
+export const KB_ID_RE = /\bKB\d{5,}\b/g
+export const URL_RE   = /https?:\/\/[^\s<>"'\]]+/g
 
 export interface EntityAllowlist {
   names: Set<string>

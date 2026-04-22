@@ -12,6 +12,23 @@ const EnvSchema = z.object({
   // 'flase', 'False', or '0' fail fast at loadEnv() instead of silently
   // leaving the fallback path inactive. See 01-CONTEXT.md §2/§4.
   STRICT_SCHEMA_SUPPORTED: z.enum(['true', 'false']).optional().default('true'),
+
+  // Phase-2 /api/chat route limits (02-CONTEXT.md §3 + §4.1).
+  // z.coerce.number() lets process.env string values like "20" parse
+  // correctly — without coerce, zod would reject the raw string. All three
+  // fields are optional with sensible defaults so local dev + tests work
+  // without .env.local extensions; production tunes them per capacity plan.
+  //
+  //  MAX_INFLIGHT_STREAMS: cap for the AsyncSemaphore (ARCHITECTURE §14
+  //    line 707 — 20 is the pilot number).
+  //  MAX_MESSAGES: history cap on the /api/chat request body (20 messages
+  //    × ~500 chars avg ≈ 10K chars — leaves headroom under the 128K
+  //    context window after the system prompt budget).
+  //  MAX_MESSAGE_CHARS: per-message length cap — accidental-paste DOS
+  //    mitigation + narrows the PITFALLS #7 injection-by-bulk surface.
+  MAX_INFLIGHT_STREAMS: z.coerce.number().int().min(1).optional().default(20),
+  MAX_MESSAGES:         z.coerce.number().int().min(1).optional().default(20),
+  MAX_MESSAGE_CHARS:    z.coerce.number().int().min(1).optional().default(8000),
 })
 
 export type Env = z.infer<typeof EnvSchema>
