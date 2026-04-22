@@ -7,6 +7,7 @@ import {
   SchemaRejectAfterRetryError,
   Upstream5xxError,
   UpstreamAuthError,
+  UpstreamTimeoutError,
   isRetryableUpstream,
 } from '@/llm/errors'
 
@@ -30,6 +31,19 @@ export interface StreamAnswerParams {
    * fallback inactive during an MGTI outage.
    */
   strictSchemaSupported?: boolean
+  /**
+   * Optional AbortSignal propagated to the upstream fetch (Plan 2-03 Task 3.3).
+   * Route (Plan 04) supplies this from an AbortController that fires after
+   * env().UPSTREAM_TOTAL_TIMEOUT_MS (default 45000) per CONTEXT.md §3.
+   * When the signal aborts, streamAnswer throws UpstreamTimeoutError and the
+   * retry loop short-circuits (an aborted request is not retryable).
+   *
+   * INTER-CHUNK (20s idle between successive stream chunks): NOT implemented
+   * in Phase 2. The current streamAnswer uses stream: false, so there are
+   * no inter-chunk events to time. See // TODO(v1.1) comment inside
+   * streamAnswer for the v1.1 upgrade path.
+   */
+  signal?: AbortSignal
 }
 
 /**
@@ -135,12 +149,17 @@ function extractUsage(completion: unknown): StreamAnswerResult['usage'] {
  * and in Task 3.2/3.3: Upstream5xxError, UpstreamAuthError, UpstreamTimeoutError).
  */
 export async function streamAnswer(params: StreamAnswerParams): Promise<StreamAnswerResult> {
-  const { client, systemPrompt, messages } = params
+  const { client, systemPrompt, messages, signal } = params
   const e = env()
   // Zod-validated: env().STRICT_SCHEMA_SUPPORTED is always the string
   // 'true' or 'false' (default 'true'). Per-call param overrides it when provided.
   const strictSupported =
     params.strictSchemaSupported ?? (e.STRICT_SCHEMA_SUPPORTED !== 'false')
+
+  // Task 3.3: If the caller's signal is already aborted, short-circuit
+  // before touching the SDK — saves a wasted fetch and gives the route
+  // a crisp UpstreamTimeoutError without waiting on the network.
+  if (signal?.aborted) throw new UpstreamTimeoutError()
 
   const wireMessages = [
     { role: 'system' as const, content: systemPrompt },
@@ -149,94 +168,143 @@ export async function streamAnswer(params: StreamAnswerParams): Promise<StreamAn
 
   // Retry config read from env() at call time (not at module load) so tests
   // that mutate process.env + call __resetEnvCacheForTests() observe the
-  // current values. Route-level total-timeout AbortSignal is a separate knob
-  // plumbed in via params.signal (Task 3.3).
+  // current values. The AbortSignal is passed through to withRetry so the
+  // retry loop also short-circuits between attempts (Task 3.3).
   const retryCfg = {
     max: e.UPSTREAM_RETRY_MAX,
     baseMs: e.UPSTREAM_RETRY_BASE_MS,
     jitterMs: e.UPSTREAM_RETRY_JITTER_MS,
+    signal,
   }
 
-  if (strictSupported) {
-    // Upstream-retry loop (429/5xx/network) wraps the single create() call.
-    // The Ajv schema-reject retry (fallback path below) is an orthogonal
-    // retry that doesn't fire on this strict-mode path — strict mode either
-    // returns schema-valid JSON or throws at the API level.
-    const completion = await withRetry(() => client.chat.completions.create({
-      model: e.LLM_MODEL,
-      messages: wireMessages,
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'kb_response',
-          strict: true,
-          schema: CITATION_SCHEMA as Record<string, unknown>,
-        },
-      },
-      stream: false,
-    }), retryCfg)
-    const msg = completion.choices[0]?.message
-    // Explicit refusal detection BEFORE JSON.parse — CONTEXT.md §Research Q1.
-    // The OpenAI SDK surfaces safety-filter refusals as message.refusal (non-null
-    // string) with message.content typically null. Parsing '{}' would succeed
-    // but produce an empty answer — indistinguishable from a model bug. Throw
-    // RefusalError so the route can emit fallback{reason:'refusal'} deliberately.
-    if (msg?.refusal) throw new RefusalError(msg.refusal)
-    const content = msg?.content ?? '{}'
-    return { response: JSON.parse(content) as KbResponse, usage: extractUsage(completion) }
-  }
-
-  // Fallback: json_object + Ajv + one retry.
-  const validator = getValidator()
-
-  async function tryOnce(): Promise<StreamAnswerResult> {
-    // Upstream-retry loop also wraps the fallback-path create() — 429/5xx
-    // can occur regardless of which response_format was requested. The
-    // Ajv schema-reject retry (outer try/catch below tryOnce) is ORTHOGONAL:
-    // it retries on SCHEMA rejection, not HTTP errors. Both loops coexist
-    // because they address different failure modes.
-    const completion = await withRetry(() => client.chat.completions.create({
-      model: e.LLM_MODEL,
-      messages: wireMessages,
-      response_format: { type: 'json_object' },
-      stream: false,
-    }), retryCfg)
-    const msg = completion.choices[0]?.message
-    // Same refusal check on the fallback path — the model can refuse
-    // regardless of which response_format was requested.
-    if (msg?.refusal) throw new RefusalError(msg.refusal)
-    const content = msg?.content ?? '{}'
-    const parsed = JSON.parse(content)
-    if (!validator(parsed)) {
-      const errMsg = JSON.stringify(validator.errors)
-      throw new Error(`Ajv validation failed: ${errMsg}`)
-    }
-    return { response: parsed as KbResponse, usage: extractUsage(completion) }
-  }
+  // TODO(v1.1): true-streaming + inter-chunk idle timeout.
+  // CONTEXT.md §3 locks a 20s inter-chunk timeout for Pitfall #10 (MGTI APIM
+  // buffering). It is NOT implemented here because the current facade uses
+  // stream: false — there is no chunk sequence to time. When streamAnswer is
+  // refactored to `stream: true` (v1.1 or whenever first-byte latency becomes
+  // user-visible), add an inter-chunk timer that resets on each chunk and
+  // fires controller.abort() with a distinct InterChunkTimeoutError so the
+  // route can emit error{code:'upstream_timeout'} with the right provenance.
+  //
+  // Observed Phase-0 baseline (Plan 1-05 + Plan 2-01 Task 1.1):
+  //   dev-mode P95 inter-chunk = 65ms over 195 chunks (ref)
+  //   prod-mode (MGTI APIM) P95 < 500ms — Pitfall #10 ruled out in Plan 2-01.
+  // Pick the inter-chunk timeout with generous headroom (e.g. 20s) when
+  // implementing v1.1 so transient APIM stalls don't prematurely abort.
 
   try {
-    return await tryOnce()
-  } catch (firstErr) {
-    // If the first attempt raised a RefusalError, propagate — retrying after
-    // a safety-filter refusal changes nothing; the model will refuse again.
-    if (firstErr instanceof RefusalError) throw firstErr
+    if (strictSupported) {
+      // Upstream-retry loop (429/5xx/network) wraps the single create() call.
+      // The Ajv schema-reject retry (fallback path below) is an orthogonal
+      // retry that doesn't fire on this strict-mode path — strict mode either
+      // returns schema-valid JSON or throws at the API level.
+      const completion = await withRetry(() => client.chat.completions.create(
+        {
+          model: e.LLM_MODEL,
+          messages: wireMessages,
+          response_format: {
+            type: 'json_schema',
+            json_schema: {
+              name: 'kb_response',
+              strict: true,
+              schema: CITATION_SCHEMA as Record<string, unknown>,
+            },
+          },
+          stream: false,
+        },
+        // OpenAI SDK v6 accepts { signal } as the second argument (request
+        // options). The SDK propagates this to the underlying fetch call.
+        { signal },
+      ), retryCfg)
+      const msg = completion.choices[0]?.message
+      // Explicit refusal detection BEFORE JSON.parse — CONTEXT.md §Research Q1.
+      // The OpenAI SDK surfaces safety-filter refusals as message.refusal (non-null
+      // string) with message.content typically null. Parsing '{}' would succeed
+      // but produce an empty answer — indistinguishable from a model bug. Throw
+      // RefusalError so the route can emit fallback{reason:'refusal'} deliberately.
+      if (msg?.refusal) throw new RefusalError(msg.refusal)
+      const content = msg?.content ?? '{}'
+      return { response: JSON.parse(content) as KbResponse, usage: extractUsage(completion) }
+    }
 
-    // One retry — same system prompt, maybe the model emitted extra whitespace
-    // or a stray field that broke Ajv. If this also fails, the caller decides
-    // what to do (smoke script fails; Phase 2 route handler flips to fallback
-    // via SchemaRejectAfterRetryError).
+    // Fallback: json_object + Ajv + one retry.
+    const validator = getValidator()
+
+    async function tryOnce(): Promise<StreamAnswerResult> {
+      // Upstream-retry loop also wraps the fallback-path create() — 429/5xx
+      // can occur regardless of which response_format was requested. The
+      // Ajv schema-reject retry (outer try/catch below tryOnce) is ORTHOGONAL:
+      // it retries on SCHEMA rejection, not HTTP errors. Both loops coexist
+      // because they address different failure modes.
+      const completion = await withRetry(() => client.chat.completions.create(
+        {
+          model: e.LLM_MODEL,
+          messages: wireMessages,
+          response_format: { type: 'json_object' },
+          stream: false,
+        },
+        { signal },
+      ), retryCfg)
+      const msg = completion.choices[0]?.message
+      // Same refusal check on the fallback path — the model can refuse
+      // regardless of which response_format was requested.
+      if (msg?.refusal) throw new RefusalError(msg.refusal)
+      const content = msg?.content ?? '{}'
+      const parsed = JSON.parse(content)
+      if (!validator(parsed)) {
+        const errMsg = JSON.stringify(validator.errors)
+        throw new Error(`Ajv validation failed: ${errMsg}`)
+      }
+      return { response: parsed as KbResponse, usage: extractUsage(completion) }
+    }
+
     try {
       return await tryOnce()
-    } catch (retryErr) {
-      if (retryErr instanceof RefusalError) throw retryErr
-      // Both Ajv retries failed — surface as typed error so Plan 04's route
-      // can map to error{code:'schema_reject_after_retry'}. Preserve the
-      // original diagnostic in .cause for log-site inspection.
-      const firstMsg = firstErr instanceof Error ? firstErr.message : String(firstErr)
-      const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr)
-      throw new SchemaRejectAfterRetryError(
-        new Error(`streamAnswer json_object fallback failed twice: ${retryMsg} (first: ${firstMsg})`),
-      )
+    } catch (firstErr) {
+      // If the first attempt raised a RefusalError, propagate — retrying after
+      // a safety-filter refusal changes nothing; the model will refuse again.
+      if (firstErr instanceof RefusalError) throw firstErr
+      // Abort-originated errors must propagate to the outer try/catch for
+      // UpstreamTimeoutError conversion — don't swallow them via Ajv retry.
+      if (isAbortLike(firstErr, signal)) throw firstErr
+
+      // One retry — same system prompt, maybe the model emitted extra whitespace
+      // or a stray field that broke Ajv. If this also fails, the caller decides
+      // what to do (smoke script fails; Phase 2 route handler flips to fallback
+      // via SchemaRejectAfterRetryError).
+      try {
+        return await tryOnce()
+      } catch (retryErr) {
+        if (retryErr instanceof RefusalError) throw retryErr
+        if (isAbortLike(retryErr, signal)) throw retryErr
+        // Both Ajv retries failed — surface as typed error so Plan 04's route
+        // can map to error{code:'schema_reject_after_retry'}. Preserve the
+        // original diagnostic in .cause for log-site inspection.
+        const firstMsg = firstErr instanceof Error ? firstErr.message : String(firstErr)
+        const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr)
+        throw new SchemaRejectAfterRetryError(
+          new Error(`streamAnswer json_object fallback failed twice: ${retryMsg} (first: ${firstMsg})`),
+        )
+      }
     }
+  } catch (err) {
+    // Task 3.3: Convert AbortError (or an aborted signal that leaked through
+    // without producing an AbortError-shaped exception) into the typed
+    // UpstreamTimeoutError the route handler discriminates on.
+    if (isAbortLike(err, signal)) throw new UpstreamTimeoutError()
+    throw err
   }
+}
+
+/**
+ * Detect abort-originated errors. Covers three cases:
+ *   - OpenAI SDK v6 throws APIUserAbortError with name 'APIUserAbortError'.
+ *   - Underlying fetch throws DOMException/Error with name 'AbortError'.
+ *   - Edge case where withRetry's internal signal check fires ('AbortError').
+ *   - Fallback: signal.aborted is true even if the error shape is odd.
+ */
+function isAbortLike(err: unknown, signal?: AbortSignal): boolean {
+  if (signal?.aborted) return true
+  const name = (err as { name?: string })?.name
+  return name === 'AbortError' || name === 'APIUserAbortError'
 }

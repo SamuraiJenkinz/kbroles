@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { streamAnswer, type ChatMessage } from '@/llm/stream'
-import { RefusalError, SchemaRejectAfterRetryError } from '@/llm/errors'
+import { RefusalError, SchemaRejectAfterRetryError, UpstreamTimeoutError } from '@/llm/errors'
 import { CITATION_SCHEMA } from '@/grounding/schema'
 import { __resetEnvCacheForTests } from '@/config/env'
 import type OpenAI from 'openai'
@@ -311,5 +312,134 @@ describe('streamAnswer — usage extraction (Plan 2-03 Task 3.1 — feeds CONTEX
     })
     expect(result.usage).toEqual({ prompt_tokens: 200, completion_tokens: 80 })
     expect(result.response.can_answer).toBe(true)
+  })
+})
+
+describe('streamAnswer — AbortSignal total-timeout (Plan 2-03 Task 3.3, CONTEXT.md Q3)', () => {
+  it('throws UpstreamTimeoutError when signal is already aborted (short-circuit)', async () => {
+    const { client, calls } = makeMockClient([{ content: VALID_RESPONSE_JSON }])
+    const ac = new AbortController()
+    ac.abort() // Pre-aborted before streamAnswer is called
+    await expect(
+      streamAnswer({
+        client, systemPrompt: 'sys',
+        messages: [{ role: 'user', content: 'q' }],
+        strictSchemaSupported: true,
+        signal: ac.signal,
+      }),
+    ).rejects.toBeInstanceOf(UpstreamTimeoutError)
+    // CRITICAL: the SDK must not be touched for a pre-aborted signal
+    expect(calls).toHaveLength(0)
+  })
+
+  it('throws UpstreamTimeoutError when SDK rejects with AbortError mid-request', async () => {
+    // Mock an in-flight abort: create() rejects with {name:'AbortError'}
+    const client = {
+      chat: {
+        completions: {
+          create: vi.fn(async () => {
+            const err = new Error('aborted') as Error & { name: string }
+            err.name = 'AbortError'
+            throw err
+          }),
+        },
+      },
+    } as unknown as OpenAI
+    const ac = new AbortController()
+    // Don't pre-abort; let the mock simulate the in-flight abort behaviour
+    await expect(
+      streamAnswer({
+        client, systemPrompt: 'sys',
+        messages: [{ role: 'user', content: 'q' }],
+        strictSchemaSupported: true,
+        signal: ac.signal,
+      }),
+    ).rejects.toBeInstanceOf(UpstreamTimeoutError)
+  })
+
+  it('throws UpstreamTimeoutError when SDK rejects with APIUserAbortError (OpenAI SDK v6 shape)', async () => {
+    const client = {
+      chat: {
+        completions: {
+          create: vi.fn(async () => {
+            const err = new Error('request was aborted') as Error & { name: string }
+            err.name = 'APIUserAbortError'
+            throw err
+          }),
+        },
+      },
+    } as unknown as OpenAI
+    const ac = new AbortController()
+    await expect(
+      streamAnswer({
+        client, systemPrompt: 'sys',
+        messages: [{ role: 'user', content: 'q' }],
+        strictSchemaSupported: true,
+        signal: ac.signal,
+      }),
+    ).rejects.toBeInstanceOf(UpstreamTimeoutError)
+  })
+
+  it('passes signal through to SDK create() second-argument request options', async () => {
+    const { client, calls: _calls } = makeMockClient([{ content: VALID_RESPONSE_JSON }])
+    // Peek at the SDK call's second argument — the mock doesn't capture it
+    // by default, so spy on the create function to observe both args.
+    const createSpy = client.chat.completions.create as ReturnType<typeof vi.fn>
+    const ac = new AbortController()
+    await streamAnswer({
+      client, systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'q' }],
+      strictSchemaSupported: true,
+      signal: ac.signal,
+    })
+    expect(createSpy).toHaveBeenCalledTimes(1)
+    // Second arg should be { signal: <AbortSignal> }
+    const secondArg = createSpy.mock.calls[0][1] as { signal?: AbortSignal } | undefined
+    expect(secondArg).toBeDefined()
+    expect(secondArg?.signal).toBe(ac.signal)
+  })
+
+  it('no signal supplied → Phase-1 backward-compat happy path still works', async () => {
+    const { client, calls } = makeMockClient([{ content: VALID_RESPONSE_JSON }])
+    // Deliberately omit signal; this is the Phase-1 call shape used by
+    // scripts/phase0-smoke.ts and existing tests.
+    const result = await streamAnswer({
+      client, systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'q' }],
+      strictSchemaSupported: true,
+    })
+    expect(calls).toHaveLength(1)
+    expect(result.response.can_answer).toBe(true)
+  })
+
+  it('fallback path also honours abort → UpstreamTimeoutError', async () => {
+    const client = {
+      chat: {
+        completions: {
+          create: vi.fn(async () => {
+            const err = new Error('aborted') as Error & { name: string }
+            err.name = 'AbortError'
+            throw err
+          }),
+        },
+      },
+    } as unknown as OpenAI
+    const ac = new AbortController()
+    await expect(
+      streamAnswer({
+        client, systemPrompt: 'sys',
+        messages: [{ role: 'user', content: 'q' }],
+        strictSchemaSupported: false,
+        signal: ac.signal,
+      }),
+    ).rejects.toBeInstanceOf(UpstreamTimeoutError)
+  })
+
+  it('documentation-drift guard: src/llm/stream.ts contains the v1.1 inter-chunk TODO', () => {
+    // If someone removes this TODO without landing the actual feature, this
+    // test fires. CONTEXT.md §3 locks the 20s inter-chunk policy; the TODO
+    // is the sole in-code marker that v1.1 must re-implement it.
+    const source = readFileSync('src/llm/stream.ts', 'utf-8')
+    expect(source).toContain('TODO(v1.1): true-streaming + inter-chunk')
   })
 })
