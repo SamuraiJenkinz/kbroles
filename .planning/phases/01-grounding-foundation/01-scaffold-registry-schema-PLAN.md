@@ -35,15 +35,16 @@ must_haves:
     - "entities.ts exports ENTITY_ALLOWLIST = { names: Set<string>, kbIds: Set<string>, urls: Set<string> } derived from source bodies at module load"
     - "All seven publishing approver names from PROJECT.md (Richard Danilowicz, Samantha Eaton, Nicholas Hile, Matthew Renner, Julie Ramos, Brandon Young, Spencer Barratt) appear in ENTITY_ALLOWLIST.names"
     - "All three KB IDs (KB0020882, KB0022991, KB18801781) appear in ENTITY_ALLOWLIST.kbIds"
+    - "env.ts Zod schema includes STRICT_SCHEMA_SUPPORTED as z.enum(['true','false']).optional().default('true'); .env.example documents the flag as commented-out with a link to Smoke 2 remediation"
   artifacts:
     - path: "package.json"
       provides: "Next.js 16, React 19.2, openai, vitest, tsx, zod, @types/json-schema dependencies; scripts for dev/build/test/typecheck/smoke"
     - path: "next.config.ts"
-      provides: "Turbopack rule for *.md raw imports + webpack fallback for asset/source"
+      provides: "Turbopack '*.md': { type: 'raw' } rule + webpack fallback type: 'asset/source'"
     - path: "vitest.config.mts"
       provides: "vite-tsconfig-paths plugin, environment: node, assetsInclude: ['**/*.md']"
     - path: "src/config/env.ts"
-      provides: "zod-validated env object exporting LLM_AUTH_MODE, LLM_BASE_URL, LLM_API_KEY, LLM_MODEL"
+      provides: "zod-validated env object exporting LLM_AUTH_MODE, LLM_BASE_URL, LLM_API_KEY, LLM_MODEL, STRICT_SCHEMA_SUPPORTED"
     - path: "src/grounding/schema.ts"
       provides: "CITATION_SCHEMA constant typed as JSONSchema7; KbResponse TypeScript type"
       exports: ["CITATION_SCHEMA", "KbResponse", "Citation"]
@@ -184,7 +185,7 @@ This plan is the foundation — NO other plans have shipped yet. Read the follow
     }
     ```
 
-    Create `next.config.ts`:
+    Create `next.config.ts` (Turbopack `type: 'raw'` is confirmed HIGH-confidence per RESEARCH.md Gap 4 & Gap 8 from the official Next.js 16.2.4 Turbopack docs — it is the direct equivalent of webpack's `asset/source`):
 
     ```ts
     import type { NextConfig } from 'next'
@@ -192,19 +193,21 @@ This plan is the foundation — NO other plans have shipped yet. Read the follow
     const nextConfig: NextConfig = {
       turbopack: {
         rules: {
-          '*.md': { loaders: [], as: '*.ts' } // placeholder; see note below
-        }
+          // '*.md' files imported as raw string content. Equivalent to
+          // webpack's `type: 'asset/source'` below. Do NOT use `loaders: []`
+          // or `as: '*.ts'` here — that is not a valid Turbopack raw-import
+          // rule and silently fails, returning undefined for `.md` imports.
+          '*.md': { type: 'raw' },
+        },
       },
       webpack(config) {
         config.module.rules.push({ test: /\.md$/, type: 'asset/source' })
         return config
-      }
+      },
     }
 
     export default nextConfig
     ```
-
-    **IMPORTANT:** Next.js 16 Turbopack's exact syntax for raw-string MD imports evolved between betas. Per RESEARCH.md Gap 4, the intended rule is `'*.md': { type: 'raw' }` (module type, not loader). Verify the installed next version's Turbopack docs after `pnpm install` and adjust if needed. The webpack fallback (`asset/source`) is stable and works for `next build --webpack`. If Turbopack syntax is uncertain, commit with the webpack rule only and add `webpack: true` to `next.config.ts` or run `next build --webpack` until confirmed.
 
     Create `types.d.ts` at repo root:
 
@@ -238,8 +241,9 @@ This plan is the foundation — NO other plans have shipped yet. Read the follow
     - `test -f types.d.ts` succeeds
     - `pnpm install` exits 0
     - `pnpm tsc --noEmit` exits 0 (no TS errors at baseline — empty src/ is fine)
+    - `grep -q "type: 'raw'" next.config.ts` succeeds (Turbopack rule sanity check)
   </verify>
-  <done>Project scaffold present, deps installed, TypeScript compiles clean.</done>
+  <done>Project scaffold present, deps installed, TypeScript compiles clean, Turbopack `*.md` rule uses `{ type: 'raw' }`.</done>
 </task>
 
 <task id="1.3" type="auto" verify="pnpm tsc --noEmit && pnpm vitest --version">
@@ -272,6 +276,13 @@ This plan is the foundation — NO other plans have shipped yet. Read the follow
       LLM_BASE_URL: z.string().url(),
       LLM_API_KEY: z.string().min(1),
       LLM_MODEL: z.string().min(1),
+      // Strict-mode capability flag. Default 'true'. Set to 'false' only when
+      // Smoke 2 remediation determines the MGTI deployment does NOT honour
+      // response_format: { type: 'json_schema', strict: true }. This flag is
+      // typed + validated here (not read raw via process.env) so typos like
+      // 'flase', 'False', or '0' fail fast at loadEnv() instead of silently
+      // leaving the fallback path inactive. See 01-CONTEXT.md §2/§4.
+      STRICT_SCHEMA_SUPPORTED: z.enum(['true', 'false']).optional().default('true'),
     })
 
     export type Env = z.infer<typeof EnvSchema>
@@ -312,6 +323,14 @@ This plan is the foundation — NO other plans have shipped yet. Read the follow
     # LLM_API_KEY=<MGTI-issued key>
     # LLM_MODEL=<MGTI deployment name for gpt-4o>
 
+    # Strict JSON Schema response-format capability flag. Default: true.
+    # Set to 'false' ONLY if Phase-0 Smoke 2 determines the MGTI deployment
+    # rejects response_format: { type: 'json_schema', strict: true } and the
+    # json_object + Ajv fallback path must be used instead. See
+    # .planning/phases/01-grounding-foundation/05-phase0-smoke-PLAN.md Smoke 2
+    # remediation notes and 01-CONTEXT.md §2 strict-mode-fallback path.
+    # STRICT_SCHEMA_SUPPORTED=true
+
     # NODE_EXTRA_CA_CERTS must be set in the SHELL ENVIRONMENT before Node starts (App Service App Settings,
     # Docker ENV, or export in shell). It does NOT work when read from .env files — Node reads it at TLS
     # init, before dotenv runs. See nodejs/node issue #51426.
@@ -321,9 +340,11 @@ This plan is the foundation — NO other plans have shipped yet. Read the follow
   <verify>
     - `pnpm tsc --noEmit` exits 0
     - `pnpm vitest --version` returns ≥3.0.0
-    - `.env.example` exists with the documented NODE_EXTRA_CA_CERTS caveat
+    - `.env.example` exists with the documented NODE_EXTRA_CA_CERTS caveat and the commented `STRICT_SCHEMA_SUPPORTED` block
+    - `grep -q "STRICT_SCHEMA_SUPPORTED" src/config/env.ts` succeeds (Zod schema includes the flag)
+    - `grep -q "STRICT_SCHEMA_SUPPORTED" .env.example` succeeds (documented)
   </verify>
-  <done>Vitest config, env contract, and .env.example in place. Nothing runs against live services yet.</done>
+  <done>Vitest config, env contract (including STRICT_SCHEMA_SUPPORTED), and .env.example in place. Nothing runs against live services yet.</done>
 </task>
 
 <task id="1.4" type="auto" verify="pnpm test -- src/grounding/__tests__/schema.test.ts">
@@ -607,10 +628,16 @@ This plan is the foundation — NO other plans have shipped yet. Read the follow
     const SOURCE_TAG_RE =
       /<source\s+id="([^"]+)"\s+title="([^"]+)"\s+version="([^"]+)"\s+url="([^"]+)"\s*>/
 
-    const SECTION_RE =
-      /<!--\s*section:([\w-]+)\s*-->\s*\n([\s\S]*?)(?=<!--\s*section:|<\/source>|$)/g
-
     export function parseSource(raw: string): Source {
+      // SECTION_RE is declared INSIDE parseSource (not at module scope).
+      // A shared /g regex carries `lastIndex` between calls, which is safe for
+      // sequential invocations but breaks under concurrent usage (e.g.
+      // Promise.all([parseSource(a), parseSource(b)])) and surprises future
+      // maintainers. Declaring it locally sidesteps both issues; the per-call
+      // allocation cost is negligible (3 calls at module load + test calls).
+      const SECTION_RE =
+        /<!--\s*section:([\w-]+)\s*-->\s*\n([\s\S]*?)(?=<!--\s*section:|<\/source>|$)/g
+
       const tagMatch = raw.match(SOURCE_TAG_RE)
       if (!tagMatch) {
         throw new Error('Missing or malformed <source ...> opening tag (must be on single line)')
@@ -623,7 +650,6 @@ This plan is the foundation — NO other plans have shipped yet. Read the follow
 
       const sections: Section[] = []
       let m: RegExpExecArray | null
-      SECTION_RE.lastIndex = 0
       while ((m = SECTION_RE.exec(inner)) !== null) {
         const sectionId = m[1]
         const rawBody = m[2].trim()
@@ -878,7 +904,8 @@ This plan is the foundation — NO other plans have shipped yet. Read the follow
     - registry.ts parses sources at module load (no runtime fs reads)
     - schema.ts locks CITATION_SCHEMA as JSONSchema7 + KbResponse type
     - entities.ts extracts ENTITY_ALLOWLIST (names, kbIds, urls) from source bodies
-    - env.ts zod-validates LLM_AUTH_MODE/LLM_BASE_URL/LLM_API_KEY/LLM_MODEL
+    - env.ts zod-validates LLM_AUTH_MODE/LLM_BASE_URL/LLM_API_KEY/LLM_MODEL +
+      STRICT_SCHEMA_SUPPORTED (default 'true', documented in .env.example)
     - All three test suites green; tsc --noEmit clean
 
     GRND-01 (source text embedded), GRND-02 (citation schema),

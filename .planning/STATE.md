@@ -12,27 +12,27 @@ See: .planning/ROADMAP.md (6 phases, standard depth)
 ## Current Position
 
 Phase: 1 of 6 (Grounding Foundation)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-04-22 — Roadmap created (6 phases, 49/49 v1 requirements mapped)
+Plan: 1 of 5 in current phase
+Status: In progress
+Last activity: 2026-04-22 — Completed 01-scaffold-registry-schema-PLAN.md
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 20%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: —
-- Total execution time: 0 hours
+- Total plans completed: 1
+- Average duration: 7 min
+- Total execution time: ~7 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| — | — | — | — |
+| 1 — Grounding Foundation | 1 / 5 | 7 min | 7 min |
 
 **Recent Trend:**
-- No plans completed yet
+- 01-scaffold-registry-schema: 7 min, 8 tasks, 6 feat commits + 1 docs metadata commit, 23/23 tests green
 
 *Updated after each plan completion*
 
@@ -48,13 +48,22 @@ Decisions are logged in PROJECT.md Key Decisions table. Load-bearing decisions a
 - Dual-mode LLM client (dev=OpenAI Bearer, prod=MGTI api-key) — zero `NODE_ENV` branching
 - Structured output JSON Schema strict mode for citations + server-side quote-substring validation
 
+**Plan 01 decisions:**
+
+| Plan | Decision | Rationale |
+|------|----------|-----------|
+| 01-01 | KB_ID_RE loosened from `\bKB\d{7}\b` to `\bKB\d{5,}\b` | Corpus has both 7-digit (KB0020882, KB0022991) and 8-digit (KB18801781) IDs; RESEARCH.md recommendation was too narrow |
+| 01-01 | Custom `rawMarkdown` Vite plugin instead of `assetsInclude` | Vite's `assetsInclude` returns URL references, not raw content; custom transform plugin matches Turbopack `{ type: 'raw' }` behaviour |
+| 01-01 | Entity extractor scans source.url attribute too | KB18801781 appears only in the SNOW_FORM permalink, never in section body text |
+| 01-01 | Per-task atomic commits (6 feat commits) rather than single combined commit | Follows task_commit_protocol — each task independently revertable |
+
 ### Pending Todos
 
-None yet.
+None.
 
 ### Blockers/Concerns
 
-**Phase-0 smoke tests (must resolve before Phase 1 closes):**
+**Phase-0 smoke tests (must resolve before Phase 1 closes — addressed in Plan 05):**
 - Exact MGTI `baseURL` suffix (5-min curl test)
 - MGTI honours `response_format: json_schema` strict mode (unvalidated)
 - MGTI streaming chunk cadence through APIM (risk of buffering)
@@ -66,6 +75,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-22
-Stopped at: Roadmap and requirements traceability created — ready to plan Phase 1
+Last session: 2026-04-22 17:10 UTC
+Stopped at: Completed 01-scaffold-registry-schema-PLAN.md
 Resume file: None
