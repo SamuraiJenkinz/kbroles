@@ -1,7 +1,18 @@
+import { readFileSync } from 'node:fs'
 import type { SourceId } from '@/grounding/schema'
-import kb0020882Raw from './sources/kb0020882.md'
-import kb0022991Raw from './sources/kb0022991.md'
-import snowFormRaw  from './sources/servicenow-form.md'
+
+// Source markdown is loaded via readFileSync at module init (server-only).
+// The original `import X from './sources/X.md'` pattern worked in Vitest (custom
+// raw-markdown Vite plugin) and Next.js (Turbopack `{ type: 'raw' }` + webpack
+// `asset/source` rule) but broke under plain tsx, which has no `.md` loader.
+// readFileSync + import.meta.url is portable across tsx, Vitest, Node, and
+// Next.js server code — all of which is this module's only caller surface.
+const readSource = (rel: string): string =>
+  readFileSync(new URL(rel, import.meta.url), 'utf-8')
+
+const kb0020882Raw = readSource('./sources/kb0020882.md')
+const kb0022991Raw = readSource('./sources/kb0022991.md')
+const snowFormRaw  = readSource('./sources/servicenow-form.md')
 
 export type { SourceId } from '@/grounding/schema'
 
