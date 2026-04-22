@@ -18,7 +18,7 @@ must_haves:
     - "api-key mode (MGTI): constructed OpenAI client has apiKey='placeholder' and defaultHeaders['api-key']=LLM_API_KEY"
     - "baseURL on the constructed client equals env.LLM_BASE_URL verbatim (no suffix manipulation in the factory — the env is the source of truth)"
     - "streamAnswer({ client, systemPrompt, messages, schema }) issues a non-streaming chat.completions.create with response_format json_schema strict: true, parses JSON, returns KbResponse shape"
-    - "streamAnswer has a json_object + Ajv fallback branch that activates when STRICT_SCHEMA_SUPPORTED env flag is 'false' (set by smoke script on Smoke 2 failure)"
+    - "streamAnswer reads STRICT_SCHEMA_SUPPORTED via env() (Zod-validated; typo-safe) — default 'true'; when 'false' the json_object + Ajv fallback path activates. Callers may still pass strictSchemaSupported to override per-call."
     - "pnpm test -- src/llm passes both client and stream test suites with mocked openai package; no network calls in tests"
   artifacts:
     - path: "src/llm/client.ts"
@@ -36,6 +36,10 @@ must_haves:
       to: "src/config/env.ts"
       via: "env() reads LLM_AUTH_MODE/LLM_BASE_URL/LLM_API_KEY/LLM_MODEL"
       pattern: "env\\(\\)"
+    - from: "src/llm/stream.ts"
+      to: "src/config/env.ts"
+      via: "env() reads STRICT_SCHEMA_SUPPORTED ('true'|'false') — default 'true'"
+      pattern: "env\\(\\)\\.STRICT_SCHEMA_SUPPORTED"
     - from: "src/llm/stream.ts"
       to: "src/grounding/schema.ts"
       via: "imports CITATION_SCHEMA + KbResponse type"
@@ -59,10 +63,10 @@ Depends on Plan 01 (for `env()`, `CITATION_SCHEMA`, `KbResponse`). Before starti
 
 @.planning/phases/01-grounding-foundation/01-CONTEXT.md  (§4 Smoke harness & dual-mode config — AUTHORITATIVE)
 @.planning/phases/01-grounding-foundation/01-RESEARCH.md  (Gap 3 — openai SDK v6 constructor pattern, api-key override via defaultHeaders, Risk 1/2)
-@.planning/phases/01-grounding-foundation/01-scaffold-registry-schema-PLAN.md  (env.ts + schema.ts — imports)
+@.planning/phases/01-grounding-foundation/01-scaffold-registry-schema-PLAN.md  (env.ts + schema.ts — imports; env.ts now includes STRICT_SCHEMA_SUPPORTED)
 @.planning/research/ARCHITECTURE.md  (§10 Dev/Prod LLM Endpoint Swap)
 @.planning/research/PITFALLS.md  (#10 ingress streaming, #11 ingress auth break)
-@src/config/env.ts  (env() and loadEnv() — USE THESE)
+@src/config/env.ts  (env() and loadEnv() — USE THESE; STRICT_SCHEMA_SUPPORTED is a Zod-validated field)
 @src/grounding/schema.ts  (CITATION_SCHEMA, KbResponse, Citation)
 
 **Factory behaviour (locked in CONTEXT.md §4):**
@@ -73,7 +77,8 @@ Depends on Plan 01 (for `env()`, `CITATION_SCHEMA`, `KbResponse`). Before starti
 
 **streamAnswer facade (locked in CONTEXT.md §2 strict-mode-fallback path):**
 - Primary path: `response_format: { type: 'json_schema', json_schema: { name, strict: true, schema } }` with `stream: false` for Phase 1.
-- Fallback path (gated on env flag or explicit param): `response_format: { type: 'json_object' }` + server-side Ajv validation + one retry on Ajv failure.
+- Fallback path (gated on `env().STRICT_SCHEMA_SUPPORTED === 'false'` or explicit param): `response_format: { type: 'json_object' }` + server-side Ajv validation + one retry on Ajv failure.
+- The env flag is a Zod-typed `z.enum(['true','false'])` (Plan 01 Task 1.3) — this means typos like `'flase'`, `'False'`, or `'0'` throw at `loadEnv()` instead of silently leaving the fallback path inactive.
 - Both paths return `KbResponse` or throw on unrecoverable failure.
 - Phase 1 is NON-streaming. `stream: true` ships in Phase 2 (GRND-07).
 </context>
@@ -147,10 +152,14 @@ Depends on Plan 01 (for `env()`, `CITATION_SCHEMA`, `KbResponse`). Before starti
       systemPrompt: string
       messages: ChatMessage[]
       /**
-       * Override the strict-mode capability flag. If omitted, reads from
-       * env.STRICT_SCHEMA_SUPPORTED (default true). Smoke 2 sets this to false
-       * when the MGTI deployment does not honour response_format: json_schema
-       * strict: true.
+       * Per-call override of the strict-mode capability flag. If omitted, the
+       * default comes from env().STRICT_SCHEMA_SUPPORTED (Zod-validated; default
+       * 'true'). Set the env flag to 'false' when Smoke 2 determines the MGTI
+       * deployment does not honour response_format: json_schema strict: true.
+       *
+       * Reading through env() (not raw process.env) means typos like 'flase',
+       * 'False', or '0' are caught at loadEnv() and never silently leave the
+       * fallback inactive during an MGTI outage.
        */
       strictSchemaSupported?: boolean
     }
@@ -168,17 +177,19 @@ Depends on Plan 01 (for `env()`, `CITATION_SCHEMA`, `KbResponse`). Before starti
      *
      * Primary path: response_format: json_schema, strict: true.
      * Fallback path: response_format: json_object + Ajv validation + one retry.
-     *   Activated when strictSchemaSupported === false.
+     *   Activated when env().STRICT_SCHEMA_SUPPORTED === 'false' (or per-call
+     *   override). Env flag is Zod-validated in env.ts (Plan 01 Task 1.3).
      *
      * Callers never see which branch ran — they always get a KbResponse or a throw.
      */
     export async function streamAnswer(params: StreamAnswerParams): Promise<KbResponse> {
       const { client, systemPrompt, messages } = params
-      const strictSupported =
-        params.strictSchemaSupported ??
-        (process.env.STRICT_SCHEMA_SUPPORTED ?? 'true') !== 'false'
-
       const e = env()
+      // Zod-validated: env().STRICT_SCHEMA_SUPPORTED is always the string
+      // 'true' or 'false' (default 'true'). Per-call param overrides it when provided.
+      const strictSupported =
+        params.strictSchemaSupported ?? (e.STRICT_SCHEMA_SUPPORTED !== 'false')
+
       const wireMessages = [
         { role: 'system' as const, content: systemPrompt },
         ...messages,
@@ -246,8 +257,10 @@ Depends on Plan 01 (for `env()`, `CITATION_SCHEMA`, `KbResponse`). Before starti
   <verify>
     - `pnpm tsc --noEmit` exits 0
     - `pnpm list ajv` shows ajv in dependencies (not devDependencies)
+    - `grep -n "process.env.STRICT_SCHEMA_SUPPORTED" src/llm/stream.ts` returns nothing (flag is read via `env()`, not raw `process.env`)
+    - `grep -n "e.STRICT_SCHEMA_SUPPORTED\|env().STRICT_SCHEMA_SUPPORTED" src/llm/stream.ts` finds the validated-env read
   </verify>
-  <done>streamAnswer implemented with both primary and fallback branches.</done>
+  <done>streamAnswer implemented with both primary and fallback branches; flag read via validated env() path.</done>
 </task>
 
 <task id="3.3" type="auto" verify="pnpm test -- src/llm/__tests__/client.test.ts">
@@ -347,6 +360,7 @@ Depends on Plan 01 (for `env()`, `CITATION_SCHEMA`, `KbResponse`). Before starti
     1. Primary path sends `response_format: json_schema` with the CITATION_SCHEMA
     2. Fallback path sends `response_format: json_object` and runs Ajv
     3. Fallback retries once on Ajv failure, then throws on second failure
+    4. The env().STRICT_SCHEMA_SUPPORTED flag (Zod-validated) drives the branch choice when no per-call override is given.
 
     ```ts
     import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -383,6 +397,8 @@ Depends on Plan 01 (for `env()`, `CITATION_SCHEMA`, `KbResponse`). Before starti
       process.env.LLM_BASE_URL  = 'https://api.openai.com/v1'
       process.env.LLM_API_KEY   = 'sk-test'
       process.env.LLM_MODEL     = 'gpt-4o-2024-08-06'
+      // STRICT_SCHEMA_SUPPORTED intentionally unset — relies on Zod default 'true'
+      delete process.env.STRICT_SCHEMA_SUPPORTED
       __resetEnvCacheForTests()
     })
 
@@ -472,9 +488,10 @@ Depends on Plan 01 (for `env()`, `CITATION_SCHEMA`, `KbResponse`). Before starti
       })
     })
 
-    describe('streamAnswer — env flag default', () => {
-      it('defaults to strictSchemaSupported=true when env flag unset', async () => {
+    describe('streamAnswer — env flag default (via Zod-validated env())', () => {
+      it('defaults to strictSchemaSupported=true when env flag unset (Zod default)', async () => {
         delete process.env.STRICT_SCHEMA_SUPPORTED
+        __resetEnvCacheForTests()
         const { client, calls } = makeMockClient([{ content: VALID_RESPONSE_JSON }])
         await streamAnswer({
           client, systemPrompt: 'sys', messages: [{ role: 'user', content: 'q' }],
@@ -484,17 +501,29 @@ Depends on Plan 01 (for `env()`, `CITATION_SCHEMA`, `KbResponse`). Before starti
 
       it('respects STRICT_SCHEMA_SUPPORTED=false env flag', async () => {
         process.env.STRICT_SCHEMA_SUPPORTED = 'false'
+        __resetEnvCacheForTests()
         const { client, calls } = makeMockClient([{ content: VALID_RESPONSE_JSON }])
         await streamAnswer({
           client, systemPrompt: 'sys', messages: [{ role: 'user', content: 'q' }],
         })
         expect(calls[0].response_format.type).toBe('json_object')
       })
+
+      it('rejects typo values at loadEnv() (Zod enum catches flase/False/0)', async () => {
+        process.env.STRICT_SCHEMA_SUPPORTED = 'flase'
+        __resetEnvCacheForTests()
+        const { client } = makeMockClient([{ content: VALID_RESPONSE_JSON }])
+        await expect(
+          streamAnswer({
+            client, systemPrompt: 'sys', messages: [{ role: 'user', content: 'q' }],
+          })
+        ).rejects.toThrow(/Invalid env/)
+      })
     })
     ```
   </action>
-  <verify>`pnpm test -- src/llm/__tests__/stream.test.ts` passes all 7 cases.</verify>
-  <done>streamAnswer tested in both branches; Ajv retry logic verified.</done>
+  <verify>`pnpm test -- src/llm/__tests__/stream.test.ts` passes all 8 cases (5 branch cases + 3 env-flag cases including the Zod typo rejection).</verify>
+  <done>streamAnswer tested in both branches; Zod-validated env flag drives the default; typo values rejected at loadEnv().</done>
 </task>
 
 <task id="3.5" type="auto" verify="pnpm test && pnpm tsc --noEmit">
@@ -521,7 +550,9 @@ Depends on Plan 01 (for `env()`, `CITATION_SCHEMA`, `KbResponse`). Before starti
     - streamAnswer() non-streaming facade (stream: true in Phase 2)
       - Primary: response_format json_schema strict: true
       - Fallback: response_format json_object + Ajv + one retry
-      - Branch gated by strictSchemaSupported param (default from env flag)
+      - Branch gated by strictSchemaSupported param, default from
+        env().STRICT_SCHEMA_SUPPORTED (Zod-validated: 'true'|'false', default 'true')
+      - Typo values (flase/False/0) fail fast at loadEnv()
     - Client tests use vi.mock('openai') to capture constructor args
     - Stream tests use a plain mock client shape, no vi.mock
     - ajv moved to dependencies (used in runtime fallback path)
@@ -546,12 +577,14 @@ Depends on Plan 01 (for `env()`, `CITATION_SCHEMA`, `KbResponse`). Before starti
 - `pnpm test` passes all six grounding + llm suites
 - `pnpm tsc --noEmit` clean
 - `grep -r 'NODE_ENV' src/` returns no hits (invariant from GRND-06) — the factory does not read NODE_ENV
+- `grep -r 'process.env.STRICT_SCHEMA_SUPPORTED' src/llm` returns no hits (flag read via validated `env()` path only)
 </verification>
 
 <success_criteria>
 - `createLlmClient()` exported from `@/llm/client`
 - `streamAnswer()`, `ChatMessage`, `StreamAnswerParams` exported from `@/llm/stream`
 - Both branches (strict json_schema and json_object + Ajv fallback) implemented and tested
+- STRICT_SCHEMA_SUPPORTED read through Zod-validated `env()` (not raw process.env); typos fail at loadEnv()
 - No live LLM calls during test run (all mocked)
 - No regression in prior plans' tests
 - Commit in git
@@ -569,5 +602,5 @@ Depends on Plan 01 (for `env()`, `CITATION_SCHEMA`, `KbResponse`). Before starti
 - **Pitfall #11 (ingress auth break):** Primary mitigation is the factory's single branch point and the env contract that fails fast on misconfiguration. The tests explicitly exercise bearer, api-key, missing auth mode, invalid auth mode, and empty API key.
 - **Pitfall #10 (ingress streaming cadence):** Out of scope for THIS plan — the smoke script (Plan 05) measures it. But `streamAnswer`'s `stream: false` here means Phase 1 doesn't block on the cadence result; Phase 2 will.
 - **RESEARCH Risk 1 (openai package v4 vs v6):** Constructor pattern `new OpenAI({ baseURL, apiKey, defaultHeaders })` is stable across versions. If `pnpm install` installs v6.x and `pnpm tsc --noEmit` fails on the constructor options type, adjust types (the options object accepts extra keys via an index signature in practice). Do not downgrade to v4 without user sign-off.
-- **RESEARCH Risk 2 (MGTI strict-mode support):** Both branches are implemented and tested in-process. Live resolution is Smoke 2's job.
+- **RESEARCH Risk 2 (MGTI strict-mode support):** Both branches are implemented and tested in-process. Live resolution is Smoke 2's job — operators flip STRICT_SCHEMA_SUPPORTED=false in App Service Application Settings; Zod validation catches typos immediately.
 </pitfall_watch>

@@ -15,7 +15,7 @@ must_haves:
     - "validateCitations(response, registry) returns a KbResponse with all citations that failed quote-substring validation stripped"
     - "Fabricated source_id is stripped; fabricated section_id is stripped; fabricated quote is stripped (case-sensitive, whitespace-normalised)"
     - "Verbatim quote from the registry passes (even when the quote in the response has different whitespace/line-wrapping from the registry body)"
-    - "If can_answer is false on input, the response passes through UNCHANGED (no citation processing, no fallback flip)"
+    - "If can_answer is false on input, citations are forced to [] and answer/can_answer are preserved unchanged — no citation validation is performed, no fallback flip occurs (defensive: schema contract requires can_answer=false → citations=[], and the validator enforces this even if the model sends citations)"
     - "If can_answer is true and ALL citations are stripped, the response is flipped: answer replaced with FALLBACK_STRING verbatim, can_answer set to false, citations set to []"
     - "If MORE than one valid citation survives, only the FIRST is kept (GRND-04 enforcement)"
     - "Each stripped citation is recorded on the result's `_flips` diagnostic array (source_id, section_id, reason)"
@@ -63,7 +63,7 @@ Depends on Plan 01 outputs. Before starting, read:
 @info/KB_Assistant_ClaudeCode_Handover.md  (§15 Grounded Response Architecture — fallback copy verbatim)
 
 **Validator behaviour (locked in CONTEXT.md §2):**
-1. If `can_answer === false` → pass through untouched.
+1. If `can_answer === false` → skip citation validation; preserve `answer` and `can_answer`; force `citations: []`. The schema contract (CONTEXT.md §2) requires `can_answer=false → citations=[]`, so the validator defensively zeroes the array even when the model disobeys — there is no case where we want to surface citations alongside an "I can't answer" response.
 2. Else for each citation: check `source_id` exists → section with matching `section_id` exists in that source → section body includes `quote` (whitespace-normalised substring, case-sensitive).
 3. Failed citations are STRIPPED (not whole-response rejection). Log each strip.
 4. If all citations stripped AND `can_answer === true` → FLIP: replace answer with FALLBACK_STRING, set `can_answer: false`, `citations: []`.
@@ -157,7 +157,7 @@ Depends on Plan 01 outputs. Before starting, read:
 
     /**
      * Validate citations against the registry.
-     * - Pass-through when can_answer is false.
+     * - Pass-through answer/can_answer when can_answer is false; citations forced to [].
      * - Strip citations whose source_id / section_id / quote can't be verified.
      * - On total strip with can_answer true → flip to fallback.
      * - If >1 valid citation survives, keep only the first (GRND-04).
@@ -168,7 +168,12 @@ Depends on Plan 01 outputs. Before starting, read:
     ): ValidationResult {
       const flips: FallbackFlip[] = []
 
-      // Rule 1: can_answer=false passes through untouched.
+      // Rule 1: can_answer=false — skip citation validation. Preserve answer
+      // and can_answer; force citations to [] defensively. The schema contract
+      // (CONTEXT.md §2) requires can_answer=false → citations=[], so if the
+      // model emitted citations alongside can_answer=false they are contract
+      // violations and we never want to surface them. This is NOT a flip — we
+      // do not rewrite answer or toggle can_answer.
       if (response.can_answer === false) {
         return { ...response, citations: [], _flips: flips }
       }
@@ -521,6 +526,8 @@ Depends on Plan 01 outputs. Before starting, read:
       section_id, and quote-not-in-body citations
     - Whitespace-normalised substring match, case-sensitive (verbatim contract)
     - On total strip with can_answer=true → flip to FALLBACK_STRING
+    - can_answer=false path preserves answer/can_answer; forces citations=[]
+      defensively (schema requires can_answer=false → citations=[])
     - Enforces GRND-04 (≤1 citation) — trims excess after validation
     - Diagnostic _flips array records every strip for Phase 2 logging
     - 12 test cases: good citations, fabricated quote/section/source, whitespace
