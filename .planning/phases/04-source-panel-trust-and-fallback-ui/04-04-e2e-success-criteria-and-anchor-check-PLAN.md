@@ -2,7 +2,7 @@
 phase: 04-source-panel-trust-and-fallback-ui
 plan: 04
 type: execute
-wave: 3
+wave: 4
 depends_on: [04-02, 04-03]
 files_modified:
   - src/grounding/__tests__/anchorIds.test.ts
@@ -309,8 +309,12 @@ test('SC #1 — Author "Resolution field" → panel auto-opens to KB0020882 with
   // Answer rendered
   await expect(page.getByText(/Configuration Item, Assignment group/)).toBeVisible()
 
-  // Panel auto-opened — Dialog with aria-labelledby source-panel-title visible
-  const panel = page.getByRole('dialog')
+  // Panel auto-opened. Scope to the SourcePanel specifically via the
+  // aria-labelledby contract from Plan 02 — NOT `getByRole('dialog')` alone,
+  // which would also match Radix Popover (AboutPopover) and ChangeRoleDialog
+  // and fail in strict mode. Plan 02 sets `aria-labelledby="source-panel-title"`
+  // on Dialog.Content and `id="source-panel-title"` on Dialog.Title.
+  const panel = page.locator('[aria-labelledby="source-panel-title"]')
   await expect(panel).toBeVisible()
 
   // Header badge shows KB0020882 with blue colour — Pitfall 16: both class AND icon
@@ -371,7 +375,10 @@ test('SC #2 — Panel updates on follow-up citation; chip click re-opens for old
   await page.getByRole('textbox').fill('What goes in the Resolution field?')
   await page.keyboard.press('Enter')
   await expect(page.getByText(/See the Resolution section/)).toBeVisible()
-  const panel = page.getByRole('dialog')
+  // Scope panel selector via aria-labelledby (set by Plan 02 SourcePanel) —
+  // avoids strict-mode collision with AboutPopover / ChangeRoleDialog which
+  // also have role="dialog".
+  const panel = page.locator('[aria-labelledby="source-panel-title"]')
   await expect(panel.getByRole('heading', { name: /Resolution Field/i })).toBeVisible()
 
   // Send a second question
@@ -418,7 +425,10 @@ test('SC #3 — Panel footer permalink + colour-coded badges + Pitfall 16/19 inv
   await page.getByRole('textbox').fill('resolution?')
   await page.keyboard.press('Enter')
 
-  const panel = page.getByRole('dialog')
+  // Scope panel selector via aria-labelledby (set by Plan 02 SourcePanel) —
+  // avoids strict-mode collision with AboutPopover / ChangeRoleDialog which
+  // also have role="dialog".
+  const panel = page.locator('[aria-labelledby="source-panel-title"]')
   await expect(panel).toBeVisible()
 
   // SC #3 — Footer permalink
@@ -514,44 +524,52 @@ test('SC #4 — Fallback card renders with three-signal distinct treatment + Fla
   await expect(fallback.getByRole('button', { name: /helpful/i })).toHaveCount(0)   // no feedback thumbs
   await expect(fallback.getByRole('button', { name: /copy answer/i })).toHaveCount(0) // no copy
 
-  // Flag button present + click opens mailto
-  const flagBtn = fallback.getByRole('button', { name: /Flag this gap/i })
-  await expect(flagBtn).toBeVisible()
+  // Flag link present — Plan 03 renders `<a href={mailtoHref}>` (NOT a button
+  // with imperative window.location assignment). The href is part of the DOM,
+  // so Playwright can assert it directly via toHaveAttribute — no
+  // window.location monkeypatching needed (which is unreliable in Chromium
+  // because window.location is non-configurable in real browsers).
+  const flagLink = fallback.getByRole('link', { name: /Flag this gap/i })
+  await expect(flagLink).toBeVisible()
 
-  // Intercept window.location assignment via a `click` listener that reads `a.href`
-  // We patch window.location.href via page.exposeFunction / evaluate capture.
-  const mailtoCapture = await page.evaluateHandle(() => {
-    let captured: string | null = null
-    const original = Object.getOwnPropertyDescriptor(window, 'location')
-    // Instead of mutating location, monkeypatch the assignment with a setter
-    Object.defineProperty(window, 'location', {
-      configurable: true,
-      get() { return original?.get?.call(window) },
-      set(value: string) { captured = value },
-    })
-    // @ts-expect-error attach to window for later readback
-    window.__mailtoCaptured = () => captured
-    return 'ready'
-  })
-
-  await flagBtn.click()
-
-  // Readback the captured href
-  const mailtoHref = await page.evaluate(() => (window as unknown as { __mailtoCaptured: () => string | null }).__mailtoCaptured())
+  // Assert href is a mailto URL encoding all four body fields + CRLF separators.
+  await expect(flagLink).toHaveAttribute('href', /^mailto:kb-knowledge-team@mmc\.com/)
+  const mailtoHref = await flagLink.getAttribute('href')
   expect(mailtoHref).toBeTruthy()
-  expect(mailtoHref!).toMatch(/^mailto:kb-knowledge-team@mmc\.com/)
-  expect(decodeURIComponent(mailtoHref!)).toContain('What is the capital of France?')
-  expect(decodeURIComponent(mailtoHref!)).toContain('Role: consumer')
-  expect(decodeURIComponent(mailtoHref!)).toContain('Request ID: req-test-abc')
-  // CRLF line separators (decodeURIComponent restores to \r\n)
-  expect(decodeURIComponent(mailtoHref!)).toContain('\r\n')
+  const decoded = decodeURIComponent(mailtoHref!)
+  expect(decoded).toContain('What is the capital of France?')
+  expect(decoded).toContain('Role: consumer')
+  expect(decoded).toContain('Request ID: req-test-abc')
+  // CRLF line separators (decodeURIComponent restores %0D%0A to \r\n)
+  expect(decoded).toContain('\r\n')
+  // Subject contains role
+  expect(decoded).toMatch(/subject=KB Assistant: unanswered question \(role: consumer\)/)
 
-  // Button label swapped
-  await expect(fallback.getByRole('button', { name: /Opened in mail client/i })).toBeVisible()
+  // Click fires the default browser mailto handler. To avoid Playwright
+  // navigating to the mailto URL (which would error), attach a listener that
+  // cancels the default mailto navigation while still letting the component's
+  // onClick handler fire to swap the label.
+  await page.evaluate(() => {
+    document.addEventListener(
+      'click',
+      (e) => {
+        const target = e.target as HTMLElement
+        const a = target.closest('a[href^="mailto:"]')
+        if (a) e.preventDefault()
+      },
+      true,
+    )
+  })
+  await flagLink.click()
+
+  // Label swapped to "Opened in mail client" (still a link, not a button)
+  await expect(fallback.getByRole('link', { name: /Opened in mail client/i })).toBeVisible()
+  // Href remains valid after click (still assertable)
+  await expect(
+    fallback.getByRole('link', { name: /Opened in mail client/i })
+  ).toHaveAttribute('href', /^mailto:/)
 })
 ```
-
-Note: if the mailto-capture strategy above is unreliable on this Playwright/Chromium version, fall back to injecting a listener that intercepts the anchor click BEFORE the component calls `window.location.href = ...`. If the implementation in Plan 03 uses `window.location.href = href`, `page.on('request', ...)` won't fire because mailto URLs don't hit the network — the monkeypatch is the right approach.
 
 **2. `tests-e2e/trust-header-and-about-tooltip.spec.ts` — SC #5 + localStorage first-run pattern**
 
@@ -630,7 +648,7 @@ SC #4 proves exact §15 copy + three-signal Pitfall-20 invariant + mailto URL co
 - Pitfall 20 covered: FallbackCard test proves three visual signals present AND no Message-like affordances.
 - Pitfall 16 covered: panel badge + citation chip both asserted to have colour class AND paired SVG icon.
 - localStorage first-run pattern for About tooltip uses the same `__e2e_initialized` guard that Phase 3 established (no double-clearing on reload).
-- Mailto URL assertion decodes and confirms all four body fields (question + role + timestamp + requestId) plus CRLF line breaks.
+- Mailto URL assertion decodes and confirms all four body fields (question + role + timestamp + requestId) plus CRLF line breaks. Assertion pattern uses `getByRole('link', ...).toHaveAttribute('href', /^mailto:/)` — NOT a `window.location` monkeypatch (which is unreliable in Chromium since window.location is non-configurable in real browsers).
 </success_criteria>
 
 <output>

@@ -7,23 +7,23 @@ See: .planning/REQUIREMENTS.md (49 v1 requirements across 12 categories)
 See: .planning/ROADMAP.md (6 phases, standard depth)
 
 **Core value:** Every answer is verifiable against the authoritative SOP — users read the cited source section without leaving the conversation. No ungrounded answers, no invented field names or approver names.
-**Current focus:** Phase 4 — Source Pane & Distinct Fallback UI (Phase 3 COMPLETE)
+**Current focus:** Phase 5 — SSO & Teams Delivery (Phase 4 COMPLETE)
 
 ## Current Position
 
-Phase: 4 of 6 (Source Panel, Trust & Fallback UI) — In Progress
-Plan: 3 (fallback-card-trust-header-about-tooltip) — COMPLETE
-Status: Plan 04-03 complete. 513 unit tests green (462 pre-existing + 51 new). `pnpm typecheck` clean. FallbackCard (Pitfall-20 three-signal), mailto builder, useConfig, useAboutTooltip, AboutPopover (Radix), freshness line in Header, requestId plumbed through fallback action all shipped. Plan 04 unblocked.
-Last activity: 2026-04-23 — Plan 04-03 complete. Commits: 6ceb1d9 (primitives) / 1fe612e (FallbackCard+MessageList+Message) / e98fac8 (AboutPopover+Header+ChatSurface).
+Phase: 4 of 6 (Source Panel, Trust & Fallback UI) — COMPLETE
+Plan: 4 (e2e-success-criteria-and-anchor-check) — COMPLETE
+Status: Plan 04-04 complete. 516 unit tests green (513 pre-existing + 3 new anchorIds). 19 E2E specs green (14 Phase-3 + 5 new Phase-4). `pnpm typecheck` clean. All 5 Phase-4 SCs proven by Playwright. Pitfall-19 Vitest unit test shipped. Pitfall-20 + Pitfall-16 E2E invariants enforced. Phase-4 behaviourally CLOSED. Phase 5 UNBLOCKED.
+Last activity: 2026-04-23 — Plan 04-04 complete. Commits: de22bb6 (fixtures+anchorIds) / 004ebf4 (SC#1/SC#2/SC#3 specs) / 0954be5 (SC#4/SC#5+regressions).
 
-Progress: [████████████████████████████░░░░] Phase 1–3 of 6 complete; Phase 4 Plan 3/4 complete
+Progress: [███████████████████████████████░░] Phase 1–4 of 6 complete; Phase 5 UNBLOCKED
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 14
-- Average duration: ~8.5 min active
-- Total execution time: ~112 min active (Plan 01 wall-clock includes ~1h 44min human-loop prod-smoke checkpoint)
+- Total plans completed: 15
+- Average duration: ~8.8 min active
+- Total execution time: ~149 min active (Plan 01 wall-clock includes ~1h 44min human-loop prod-smoke checkpoint)
 
 **By Phase:**
 
@@ -43,6 +43,7 @@ Progress: [███████████████████████
 - 02-01-infra-ops-setup: 17 min active (2 sessions across prod-smoke human checkpoint, wall-clock ~2h 24min); 3 tasks, 1 checkpoint:human-verify (Task 1.1 prod-mode smoke gate); 4 commits d9b5f34 / fd373dd / 60d7aca / b12a77c + pending docs metadata; 137/137 tests green (5 new — but 2 logger tests were already counted in Plan 02's 134 due to wave-1 parallel absorption); pino 10.3.1 + pino-pretty 13.1.3 in deps; Phase 2 entry gate PROD-MODE GREEN — Plan 04 UNBLOCKED
 - 02-03-upstream-resilience: ~10 min active; 3 tasks autonomous (no checkpoints); 3 feat commits 574e1f7 / 0e0acc2 / f0b2313 + pending docs metadata commit; 187/187 tests green (50 new: 13 errors + 17 stream additions + 13 retry + 8 env); src/llm/errors.ts added (five typed error classes + isRetryableUpstream); streamAnswer extended with {response, usage} shape + withRetry wrapper + AbortSignal hook; env.ts extended with four UPSTREAM_* knobs; v1.1 inter-chunk deferral marker with drift-guard test; zero new dependencies
 - 02-04-route-wiring: ~15 min active; 3 tasks autonomous (no checkpoints); 3 commits a5f33ab (feat prompts route) / 2792c5c (feat chat route) / 2559121 (docs client contract) + pending docs metadata commit; 223/223 tests green (36 new: 10 prompts-route + 26 chat-route); src/app/api/chat/route.ts + src/app/api/prompts/route.ts + docs/api-chat-contract.md shipped; all 5 Phase-2 SCs closed with dedicated coverage; zero new dependencies
+- 04-04-e2e-success-criteria-and-anchor-check: ~37 min active; 3 tasks autonomous (no checkpoints); 3 commits de22bb6 (fixtures+anchorIds) / 004ebf4 (SC#1/SC#2/SC#3) / 0954be5 (SC#4/SC#5+Phase-3 regressions); 19/19 E2E specs green + 516/516 unit tests green; 4 Rule-1 auto-fixes (heading strict-mode collision; window guard on reload; aria-label post-click static; Phase-3 chip-count + panel intercept + getByText collision); Phase 4 behaviourally closed
 - 03-06-e2e-success-criteria: ~11 min active; 2 tasks autonomous (no checkpoints); 2 commits b04eae5 (test fixtures+SC#1+SC#2) / 5bd69f4 (test SC#3/SC#4/SC#5+Pitfall13/17); 14/14 E2E specs green + 355/355 unit tests green (369 total); 6 spec files + 1 fixture; 5 Rule-1 auto-fixes (ReadableStream not supported in Playwright v1.59.1; Next.js route-announcer alert collision; chip-label regex collision; Windows clipboard CRLF; addInitScript reload behaviour); Phase 3 behaviourally closed
 - 03-01-scaffold-ui-stack: ~4 min active; 2 tasks (1 chore deps + 1 feat shell); commits 5465be6 (chore) / 19cc9f3 (feat); 264/264 tests green (0 new — Wave 1 tests absorbed into Plan 02 commit); Tailwind v4 + Radix Primitives + lucide-react + Playwright infra; root app shell shipped
 - 03-05-chat-page-wiring: ~12 min active; 2 tasks autonomous (no checkpoints); 2 commits 5b542c6 (feat usePrompts+Greeting+ChatPage+page.tsx) / c9c6bf8 (feat ChatSurface+Pitfall13+retry); 355/355 tests green (15 new: 6 usePrompts + 9 ChatSurface/ChatPage); ChatSurface full wiring shipped; app/page.tsx delivers live chat at /; Pitfall-13 ordering test-asserted; Retry flow + handleRetry; TooltipProvider wrapper for jsdom tests (Rule 3 auto-fix)
@@ -185,6 +186,16 @@ Decisions are logged in PROJECT.md Key Decisions table. Load-bearing decisions a
 | 04-03 | `localStorage.setItem('about_tooltip_seen_v1', 'true')` in ChatSurface beforeEach | AboutPopover auto-open produces 3 `<li>` bullets counted by `queryAllByRole('listitem')`; seeding seen=true prevents interference with chip-count assertions |
 | 04-03 | Module-level useConfig cache + `__resetConfigCacheForTests()` | Multiple components share one /api/config fetch per page load; test-only reset function keeps hook tests hermetic |
 
+**Plan 04-04 decisions (e2e-success-criteria-and-anchor-check):**
+
+| Plan  | Decision | Rationale |
+|-------|----------|-----------|
+| 04-04 | Use `#section-id` locator instead of `getByRole(heading)` for body content assertions in panel specs | Dialog.Title and body h2 both render section name; strict-mode violation with heading role — scoping to the wrapper div's authored id is unambiguous |
+| 04-04 | `sessionStorage.getItem('__e2e_initialized')` guard (not `window` property) in addInitScript | Window properties reset on page.reload(); sessionStorage survives within the same browser tab — Phase-3 role-contamination.spec.ts established this pattern |
+| 04-04 | `locator('a', {hasText:/Opened in mail client/})` for post-click FallbackCard assertion | FallbackCard's `<a>` aria-label is static; only the text content node changes after setFlagged(true) |
+| 04-04 | `mockChatFallbackPage` name (not overwriting existing `mockChatFallback`) | Existing `mockChatFallback` takes Route not Page; creating a page-level variant alongside preserves Phase-3 call signatures |
+| 04-04 | Phase-3 regression fixes: suppress About popover in beforeEach, close panel before "New conversation", scope chip assertion to getByRole('button') | Phase-4 SourcePanel auto-open + AboutPopover first-run both affect Phase-3 specs that don't mock the new routes or suppress the popover |
+
 **Plan 04-02 decisions (source-panel-and-chip-integration):**
 
 | Plan  | Decision | Rationale |
@@ -292,10 +303,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-23 — Plan 04-03 complete. Commits: 6ceb1d9 (primitives) / 1fe612e (FallbackCard+MessageList+Message) / e98fac8 (AboutPopover+Header+ChatSurface). 513 total unit tests green. SUMMARY at .planning/phases/04-source-panel-trust-and-fallback-ui/04-03-SUMMARY.md.
-Stopped at: Phase 4 Plan 3 complete.
+Last session: 2026-04-23 — Plan 04-04 complete. Commits: de22bb6 (fixtures+anchorIds) / 004ebf4 (SC#1/SC#2/SC#3 specs) / 0954be5 (SC#4/SC#5+Phase-3 regressions). 516 total unit tests green; 19 E2E specs green. SUMMARY at .planning/phases/04-source-panel-trust-and-fallback-ui/04-04-SUMMARY.md.
+Stopped at: Phase 4 COMPLETE (all 4 plans done).
 Resume signals (next session):
-  - Phase 4 Plan 4 — e2e-success-criteria-and-anchor-check
+  - Phase 5 — SSO & Teams Delivery (UNBLOCKED)
 Resume file: None
 
 **Deferred work tracked for v1.1 (post-Phase 2):**
