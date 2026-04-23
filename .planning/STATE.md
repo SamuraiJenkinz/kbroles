@@ -12,18 +12,18 @@ See: .planning/ROADMAP.md (6 phases, standard depth)
 ## Current Position
 
 Phase: 3 of 6 (Role Experience & Chat UI) — In progress
-Plan: 4 (presentational-components) — COMPLETE; Plans 5–6 pending
-Status: Phase 3 Wave 2 (Plans 03 + 04) complete — useRolePersistence + useDraftBuffer + useChatStream shipped; RoleSelect + Header + Message + all 13 presentational components shipped; 340/340 tests green. Plans 05–06 UNBLOCKED.
-Last activity: 2026-04-23 — Completed 03-04-presentational-components-PLAN.md. Commits eec6c72 (feat core components) / 51e2d2c (feat InputBar + ChangeRoleDialog + tests).
+Plan: 5 (chat-page-wiring) — COMPLETE; Plan 6 pending
+Status: Phase 3 Wave 3 (Plan 05) complete — ChatSurface + ChatPage + usePrompts + Greeting wired; app/page.tsx delivers live chat; Pitfall-13 ordering test-asserted; Retry flow shipped; 355/355 tests green. Plan 06 UNBLOCKED.
+Last activity: 2026-04-23 — Completed 03-05-chat-page-wiring-PLAN.md. Commits 5b542c6 (feat usePrompts+Greeting+ChatPage+page.tsx) / c9c6bf8 (feat ChatSurface+Pitfall13+retry).
 
-Progress: [████████████████████] Phase 1 of 6 complete; Phase 2 of 6 complete; Phase 3 Plans 1–4 of 6 complete
+Progress: [████████████████████] Phase 1 of 6 complete; Phase 2 of 6 complete; Phase 3 Plans 1–5 of 6 complete
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11 (Plans 03 + 04 completed in Wave 2 parallel)
-- Average duration: ~7.6 min active
-- Total execution time: ~89 min active (Plan 01 wall-clock includes ~1h 44min human-loop prod-smoke checkpoint)
+- Total plans completed: 12
+- Average duration: ~8.3 min active
+- Total execution time: ~101 min active (Plan 01 wall-clock includes ~1h 44min human-loop prod-smoke checkpoint)
 
 **By Phase:**
 
@@ -31,7 +31,7 @@ Progress: [████████████████████] Phase 1
 |-------|-------|-------|----------|
 | 1 — Grounding Foundation | 5 / 5 (complete) | ~31 min | ~6 min |
 | 2 — Chat Backend BFF     | 4 / 4 (complete) | ~50 min active | ~12.5 min |
-| 3 — Role Experience & Chat UI | 4 / 6 complete | ~15 min (Plans 01–04) | ~3.75 min |
+| 3 — Role Experience & Chat UI | 5 / 6 complete | ~27 min (Plans 01–05) | ~5.4 min |
 
 **Recent Trend:**
 - 01-scaffold-registry-schema: 7 min, 8 tasks, 6 feat commits + 1 docs metadata commit, 23/23 tests green
@@ -44,6 +44,7 @@ Progress: [████████████████████] Phase 1
 - 02-03-upstream-resilience: ~10 min active; 3 tasks autonomous (no checkpoints); 3 feat commits 574e1f7 / 0e0acc2 / f0b2313 + pending docs metadata commit; 187/187 tests green (50 new: 13 errors + 17 stream additions + 13 retry + 8 env); src/llm/errors.ts added (five typed error classes + isRetryableUpstream); streamAnswer extended with {response, usage} shape + withRetry wrapper + AbortSignal hook; env.ts extended with four UPSTREAM_* knobs; v1.1 inter-chunk deferral marker with drift-guard test; zero new dependencies
 - 02-04-route-wiring: ~15 min active; 3 tasks autonomous (no checkpoints); 3 commits a5f33ab (feat prompts route) / 2792c5c (feat chat route) / 2559121 (docs client contract) + pending docs metadata commit; 223/223 tests green (36 new: 10 prompts-route + 26 chat-route); src/app/api/chat/route.ts + src/app/api/prompts/route.ts + docs/api-chat-contract.md shipped; all 5 Phase-2 SCs closed with dedicated coverage; zero new dependencies
 - 03-01-scaffold-ui-stack: ~4 min active; 2 tasks (1 chore deps + 1 feat shell); commits 5465be6 (chore) / 19cc9f3 (feat); 264/264 tests green (0 new — Wave 1 tests absorbed into Plan 02 commit); Tailwind v4 + Radix Primitives + lucide-react + Playwright infra; root app shell shipped
+- 03-05-chat-page-wiring: ~12 min active; 2 tasks autonomous (no checkpoints); 2 commits 5b542c6 (feat usePrompts+Greeting+ChatPage+page.tsx) / c9c6bf8 (feat ChatSurface+Pitfall13+retry); 355/355 tests green (15 new: 6 usePrompts + 9 ChatSurface/ChatPage); ChatSurface full wiring shipped; app/page.tsx delivers live chat at /; Pitfall-13 ordering test-asserted; Retry flow + handleRetry; TooltipProvider wrapper for jsdom tests (Rule 3 auto-fix)
 - 03-04-presentational-components: ~8 min active; 2 tasks autonomous (no checkpoints); 2 commits eec6c72 (feat core components) / 51e2d2c (feat InputBar+ChangeRoleDialog+tests); 340/340 tests green (49 new: 9 RoleSelect + 4 Header + 9 InputBar + 11 AssistantControls + 8 ErrorCard + 8 ChangeRoleDialog); 13 components + 6 jsdom test files; @testing-library/jest-dom installed + vitest globals wired; contracts locked for Plan 05: InputBar forwardRef, Message/MessageList onRetry, ChangeRoleDialog "Change role and clear" label
 - 03-03-persistence-and-stream-hooks: ~4 min active; 2 tasks autonomous; commits 9cf726b (feat role+draft hooks) / co-committed with eec6c72; 302/302 tests green (27 new: 8 rolePersistence + 7 draftBuffer + 10 chatStream + 2 useDraftBuffer wave-absorption); useRolePersistence + useDraftBuffer + useChatStream hooks shipped; zero new dependencies
 - 03-02-pure-primitives: ~3 min active; 2 tasks autonomous; commits 960d164 (feat types+reducer) + 19cc9f3 (co-committed wave-1 feat time+sourceTitles); 264/264 tests green (40 new: 20 reducer + 13 time + 7 sourceTitles); wire types + pure chat reducer (12 actions) + formatRelative + sourceTitles; zero new dependencies
@@ -152,6 +153,15 @@ Decisions are logged in PROJECT.md Key Decisions table. Load-bearing decisions a
 | 02-04 | /api/prompts uses `dynamic='force-dynamic'` (REVERSED from initial force-static) | Initial `force-static` choice was wrong: Next's static-cache layer drops the query string at runtime, so `request.url` loses `?role=...` and every real request 400s with `role_required`. Unit tests missed this (direct GET() call bypasses framework URL rewriting). Caught by Phase 2 live-curl verification (commit `157325b`). Proxy caching is still achieved via Cache-Control + shared-cache URL keying. Added drift-guard test `dynamic === 'force-dynamic'`. |
 | 02-04 | vi.hoisted factory pattern for capturing pino instance shared across vi.mock factories | vi.mock factories are hoisted above ordinary top-level declarations; referencing `capturingLogger` defined at test-file top-level throws `ReferenceError: Cannot access X before initialization`. vi.hoisted() guarantees state is initialised before any vi.mock factory runs. Canonical Vitest pattern for shared-state mocks. |
 
+**Plan 03-05 decisions (chat-page-wiring):**
+
+| Plan  | Decision | Rationale |
+|-------|----------|-----------|
+| 03-05 | Never-resolving fetch mock for Stop + Pitfall-13 tests | jsdom ReadableStream pull() returning a never-resolving promise blocks even enqueued initial chunks from being delivered across concurrent async act() boundaries. Observable contract (signal.aborted, no error card, stop-btn disappears) is fully verifiable. Reducer text-preservation proof is in chatReducer.test.ts. |
+| 03-05 | TooltipProvider wrapper in ChatSurface.test.tsx | Timestamp.tsx uses Radix Tooltip.Root which throws without Provider context. Added Providers wrapper function in test setup (Rule 3 blocking fix). |
+| 03-05 | onChangeRole() called inside handleConfirmChangeRole AFTER stop+clear | Pitfall 13 ordering owned in one function in ChatSurface rather than split across components. ChatPage's onChangeRole prop is a pure state setter with no stream knowledge. |
+| 03-05 | asstIdRef.current cleared in every terminal path | Prevents stale handleEvent dispatch after race conditions (stream resolves after clear/stop). |
+
 **Plan 03-04 decisions (presentational-components):**
 
 | Plan  | Decision | Rationale |
@@ -231,11 +241,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-23 — Phase 3 Wave 2 complete (Plans 03 + 04 both shipped in parallel). Plan 03 commits: 9cf726b (feat role+draft hooks) / eec6c72 (feat useChatStream + Plan 04 components, co-committed in Wave 2 parallel). Plan 04 commits: eec6c72 (feat core components) / 51e2d2c (feat InputBar+ChangeRoleDialog+tests). 340/340 tests green. SUMMARYs at .planning/phases/03-role-experience-and-chat-ui/03-03-SUMMARY.md + 03-04-SUMMARY.md.
-Stopped at: Phase 3 Wave 2 complete. Plans 05–06 unblocked.
+Last session: 2026-04-23 — Phase 3 Wave 3 (Plan 05) complete. Commits: 5b542c6 (feat usePrompts+Greeting+ChatPage+page.tsx) / c9c6bf8 (feat ChatSurface+Pitfall13+retry). 355/355 tests green. SUMMARY at .planning/phases/03-role-experience-and-chat-ui/03-05-SUMMARY.md.
+Stopped at: Phase 3 Wave 3 complete. Plan 06 unblocked.
 Resume signals (next session):
-  - Plan 05 (ChatPage wiring) — imports useRolePersistence + useDraftBuffer + useChatStream + chatReducer + initialChatState
-  - Plan 06 (E2E/visual smoke) — exercises full ChatPage render path
+  - Plan 06 (E2E/visual smoke) — exercises full ChatPage render path in Playwright against pnpm dev
 Resume file: None
 
 **Deferred work tracked for v1.1 (post-Phase 2):**
