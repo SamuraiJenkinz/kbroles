@@ -1,13 +1,13 @@
 import { test, expect } from '@playwright/test'
 import { mockPrompts, mockConfig, mockSources } from './fixtures/mockChat'
-import { stubMsalAuthenticated } from './fixtures/mockMsal'
+import { stubBffAuthenticated } from './fixtures/mockSession'
 
 test('SC #2 — Panel updates on follow-up citation; chip click re-opens for older message', async ({ page }) => {
   await page.addInitScript(() => {
     sessionStorage.clear()
     localStorage.setItem('about_tooltip_seen_v1', 'true')
   })
-  await stubMsalAuthenticated(page)  // Plan 05-04: ChatPage auth gate
+  await stubBffAuthenticated(page)  // Plan 05.1-06: ChatPage auth gate (BFF /api/me route-mock)
   await mockPrompts(page)
   await mockConfig(page)
   await mockSources(page)

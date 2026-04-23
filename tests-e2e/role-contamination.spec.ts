@@ -12,7 +12,7 @@
 
 import { test, expect } from '@playwright/test'
 import { mockPrompts, mockChatSlow, mockChatSuccess } from './fixtures/mockChat'
-import { stubMsalAuthenticated } from './fixtures/mockMsal'
+import { stubBffAuthenticated } from './fixtures/mockSession'
 
 test.describe('Pitfall regressions — role contamination + refresh draft-only', () => {
   test.beforeEach(async ({ page }) => {
@@ -25,10 +25,10 @@ test.describe('Pitfall regressions — role contamination + refresh draft-only',
         sessionStorage.setItem('__e2e_initialized', '1')
       }
     })
-    // Plan 05-04: ChatPage auth gate. Stubbed AFTER the clear above; MSAL
-    // cache keys survive reload within a spec (page.reload preserves
-    // sessionStorage) which is correct for Pitfall 17.
-    await stubMsalAuthenticated(page)
+    // Plan 05.1-06: ChatPage auth gate via BFF /api/me route-mock.
+    // page.route handlers survive page.reload() within the same test, so the
+    // AuthProvider's re-fetch on reload resolves correctly for Pitfall 17.
+    await stubBffAuthenticated(page)
   })
 
   test('Pitfall 13 — change role MID-STREAM does not leak old-role text into new bubble', async ({

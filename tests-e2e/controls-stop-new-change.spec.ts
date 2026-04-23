@@ -13,7 +13,7 @@
 
 import { test, expect } from '@playwright/test'
 import { mockPrompts, mockChatSuccess, mockChatSlow } from './fixtures/mockChat'
-import { stubMsalAuthenticated } from './fixtures/mockMsal'
+import { stubBffAuthenticated } from './fixtures/mockSession'
 
 test.describe('SC #3 — Stop / New conversation / Change role', () => {
   test.beforeEach(async ({ page }) => {
@@ -23,8 +23,8 @@ test.describe('SC #3 — Stop / New conversation / Change role', () => {
       sessionStorage.clear()
       localStorage.setItem('about_tooltip_seen_v1', 'true')
     })
-    // Plan 05-04: seed MSAL cache so ChatPage's auth gate passes.
-    await stubMsalAuthenticated(page)
+    // Plan 05.1-06: mock /api/me so AuthProvider auth gate passes (BFF pattern).
+    await stubBffAuthenticated(page)
   })
 
   test('Stop cancels mid-stream and preserves accumulated text', async ({ page }) => {

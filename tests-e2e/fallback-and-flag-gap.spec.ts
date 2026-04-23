@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { mockPrompts, mockConfig, mockSources, mockChatFallbackPage } from './fixtures/mockChat'
-import { stubMsalAuthenticated } from './fixtures/mockMsal'
+import { stubBffAuthenticated } from './fixtures/mockSession'
 
 const FALLBACK_TEXT =
   "That information isn't in the loaded documents yet. Flag the gap to the CTSS Knowledge team via KB0022991."
@@ -10,7 +10,7 @@ test('SC #4 — Fallback card renders with three-signal distinct treatment + Fla
     sessionStorage.clear()
     localStorage.setItem('about_tooltip_seen_v1', 'true')
   })
-  await stubMsalAuthenticated(page)  // Plan 05-04: ChatPage auth gate
+  await stubBffAuthenticated(page)  // Plan 05.1-06: ChatPage auth gate (BFF /api/me route-mock)
   await mockPrompts(page)
   await mockConfig(page)
   await mockSources(page)

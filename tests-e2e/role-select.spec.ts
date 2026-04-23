@@ -9,7 +9,7 @@
 
 import { test, expect } from '@playwright/test'
 import { mockPrompts } from './fixtures/mockChat'
-import { stubMsalAuthenticated } from './fixtures/mockMsal'
+import { stubBffAuthenticated } from './fixtures/mockSession'
 
 test.describe('SC #1 — Role select landing', () => {
   test.beforeEach(async ({ page }) => {
@@ -21,10 +21,9 @@ test.describe('SC #1 — Role select landing', () => {
       sessionStorage.clear()
       localStorage.setItem('about_tooltip_seen_v1', 'true')
     })
-    // Plan 05-04: seed MSAL sessionStorage so ChatPage's auth gate passes.
-    // addInitScript calls stack; stubMsalAuthenticated adds a second init
-    // script that runs AFTER the clear above, so the cache survives.
-    await stubMsalAuthenticated(page)
+    // Plan 05.1-06: mock /api/me so AuthProvider auth gate passes (BFF pattern).
+    // The route handler is independent of the sessionStorage clear above.
+    await stubBffAuthenticated(page)
     await mockPrompts(page)
   })
 
