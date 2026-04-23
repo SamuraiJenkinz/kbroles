@@ -7,23 +7,23 @@ See: .planning/REQUIREMENTS.md (49 v1 requirements across 12 categories)
 See: .planning/ROADMAP.md (6 phases, standard depth)
 
 **Core value:** Every answer is verifiable against the authoritative SOP — users read the cited source section without leaving the conversation. No ungrounded answers, no invented field names or approver names.
-**Current focus:** Phase 3 — Role Experience & Chat UI
+**Current focus:** Phase 4 — Source Pane & Distinct Fallback UI (Phase 3 COMPLETE)
 
 ## Current Position
 
-Phase: 3 of 6 (Role Experience & Chat UI) — In progress
-Plan: 5 (chat-page-wiring) — COMPLETE; Plan 6 pending
-Status: Phase 3 Wave 3 (Plan 05) complete — ChatSurface + ChatPage + usePrompts + Greeting wired; app/page.tsx delivers live chat; Pitfall-13 ordering test-asserted; Retry flow shipped; 355/355 tests green. Plan 06 UNBLOCKED.
-Last activity: 2026-04-23 — Completed 03-05-chat-page-wiring-PLAN.md. Commits 5b542c6 (feat usePrompts+Greeting+ChatPage+page.tsx) / c9c6bf8 (feat ChatSurface+Pitfall13+retry).
+Phase: 3 of 6 (Role Experience & Chat UI) — COMPLETE
+Plan: 6 (e2e-success-criteria) — COMPLETE
+Status: Phase 3 complete — 14 Playwright E2E specs green (all 5 SCs + Pitfall 13 + Pitfall 17); 355 unit tests + 14 E2E tests = 369 total. Phase 4 UNBLOCKED.
+Last activity: 2026-04-23 — Completed 03-06-e2e-success-criteria-PLAN.md. Commits b04eae5 (test SC#1+SC#2+fixtures) / 5bd69f4 (test SC#3/SC#4/SC#5+Pitfall13/17).
 
-Progress: [████████████████████] Phase 1 of 6 complete; Phase 2 of 6 complete; Phase 3 Plans 1–5 of 6 complete
+Progress: [████████████████████████] Phase 1–3 of 6 complete; Phase 4 pending
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12
-- Average duration: ~8.3 min active
-- Total execution time: ~101 min active (Plan 01 wall-clock includes ~1h 44min human-loop prod-smoke checkpoint)
+- Total plans completed: 13
+- Average duration: ~8.4 min active
+- Total execution time: ~112 min active (Plan 01 wall-clock includes ~1h 44min human-loop prod-smoke checkpoint)
 
 **By Phase:**
 
@@ -31,7 +31,7 @@ Progress: [████████████████████] Phase 1
 |-------|-------|-------|----------|
 | 1 — Grounding Foundation | 5 / 5 (complete) | ~31 min | ~6 min |
 | 2 — Chat Backend BFF     | 4 / 4 (complete) | ~50 min active | ~12.5 min |
-| 3 — Role Experience & Chat UI | 5 / 6 complete | ~27 min (Plans 01–05) | ~5.4 min |
+| 3 — Role Experience & Chat UI | 6 / 6 complete | ~38 min (Plans 01–06) | ~6.3 min |
 
 **Recent Trend:**
 - 01-scaffold-registry-schema: 7 min, 8 tasks, 6 feat commits + 1 docs metadata commit, 23/23 tests green
@@ -43,6 +43,7 @@ Progress: [████████████████████] Phase 1
 - 02-01-infra-ops-setup: 17 min active (2 sessions across prod-smoke human checkpoint, wall-clock ~2h 24min); 3 tasks, 1 checkpoint:human-verify (Task 1.1 prod-mode smoke gate); 4 commits d9b5f34 / fd373dd / 60d7aca / b12a77c + pending docs metadata; 137/137 tests green (5 new — but 2 logger tests were already counted in Plan 02's 134 due to wave-1 parallel absorption); pino 10.3.1 + pino-pretty 13.1.3 in deps; Phase 2 entry gate PROD-MODE GREEN — Plan 04 UNBLOCKED
 - 02-03-upstream-resilience: ~10 min active; 3 tasks autonomous (no checkpoints); 3 feat commits 574e1f7 / 0e0acc2 / f0b2313 + pending docs metadata commit; 187/187 tests green (50 new: 13 errors + 17 stream additions + 13 retry + 8 env); src/llm/errors.ts added (five typed error classes + isRetryableUpstream); streamAnswer extended with {response, usage} shape + withRetry wrapper + AbortSignal hook; env.ts extended with four UPSTREAM_* knobs; v1.1 inter-chunk deferral marker with drift-guard test; zero new dependencies
 - 02-04-route-wiring: ~15 min active; 3 tasks autonomous (no checkpoints); 3 commits a5f33ab (feat prompts route) / 2792c5c (feat chat route) / 2559121 (docs client contract) + pending docs metadata commit; 223/223 tests green (36 new: 10 prompts-route + 26 chat-route); src/app/api/chat/route.ts + src/app/api/prompts/route.ts + docs/api-chat-contract.md shipped; all 5 Phase-2 SCs closed with dedicated coverage; zero new dependencies
+- 03-06-e2e-success-criteria: ~11 min active; 2 tasks autonomous (no checkpoints); 2 commits b04eae5 (test fixtures+SC#1+SC#2) / 5bd69f4 (test SC#3/SC#4/SC#5+Pitfall13/17); 14/14 E2E specs green + 355/355 unit tests green (369 total); 6 spec files + 1 fixture; 5 Rule-1 auto-fixes (ReadableStream not supported in Playwright v1.59.1; Next.js route-announcer alert collision; chip-label regex collision; Windows clipboard CRLF; addInitScript reload behaviour); Phase 3 behaviourally closed
 - 03-01-scaffold-ui-stack: ~4 min active; 2 tasks (1 chore deps + 1 feat shell); commits 5465be6 (chore) / 19cc9f3 (feat); 264/264 tests green (0 new — Wave 1 tests absorbed into Plan 02 commit); Tailwind v4 + Radix Primitives + lucide-react + Playwright infra; root app shell shipped
 - 03-05-chat-page-wiring: ~12 min active; 2 tasks autonomous (no checkpoints); 2 commits 5b542c6 (feat usePrompts+Greeting+ChatPage+page.tsx) / c9c6bf8 (feat ChatSurface+Pitfall13+retry); 355/355 tests green (15 new: 6 usePrompts + 9 ChatSurface/ChatPage); ChatSurface full wiring shipped; app/page.tsx delivers live chat at /; Pitfall-13 ordering test-asserted; Retry flow + handleRetry; TooltipProvider wrapper for jsdom tests (Rule 3 auto-fix)
 - 03-04-presentational-components: ~8 min active; 2 tasks autonomous (no checkpoints); 2 commits eec6c72 (feat core components) / 51e2d2c (feat InputBar+ChangeRoleDialog+tests); 340/340 tests green (49 new: 9 RoleSelect + 4 Header + 9 InputBar + 11 AssistantControls + 8 ErrorCard + 8 ChangeRoleDialog); 13 components + 6 jsdom test files; @testing-library/jest-dom installed + vitest globals wired; contracts locked for Plan 05: InputBar forwardRef, Message/MessageList onRetry, ChangeRoleDialog "Change role and clear" label
@@ -162,6 +163,17 @@ Decisions are logged in PROJECT.md Key Decisions table. Load-bearing decisions a
 | 03-05 | onChangeRole() called inside handleConfirmChangeRole AFTER stop+clear | Pitfall 13 ordering owned in one function in ChatSurface rather than split across components. ChatPage's onChangeRole prop is a pure state setter with no stream knowledge. |
 | 03-05 | asstIdRef.current cleared in every terminal path | Prevents stale handleEvent dispatch after race conditions (stream resolves after clear/stop). |
 
+**Plan 03-06 decisions (e2e-success-criteria):**
+
+| Plan  | Decision | Rationale |
+|-------|----------|-----------|
+| 03-06 | mockChatSlow uses 30s delayed-fulfill (no body) — not ReadableStream body | Playwright v1.59.1 route.fulfill accepts only string|Buffer; ReadableStream silently fails. Delay approach leverages isStreaming=true being set BEFORE await fetch() so Stop button is observable. |
+| 03-06 | Stop test validates button visibility + Send re-enable only (no partial text) | No delta delivered before Stop (mock never responds); partial-text-preserved invariant is already proven by chatReducer unit test "stoppedByUser". |
+| 03-06 | Clipboard assertion normalizes CRLF + trailing whitespace before toBe() | Windows clipboard adds trailing spaces on lines when writing \n\n separators; normalization preserves semantic UTIL-01 assertion while tolerating OS behaviour. |
+| 03-06 | getByRole('alert') filtered by hasText — not bare | Next.js injects route-announcer with role="alert"; Playwright strict mode rejects when 2 elements match. Filter targets only the ErrorCard by message content. |
+| 03-06 | addInitScript uses __e2e_initialized flag so page.reload() does NOT re-clear sessionStorage | Raw sessionStorage.clear() in addInitScript fires on every navigation; flag-guarded clear runs once per test lifecycle, allowing Pitfall-17 test to verify role+draft survive reload. |
+| 03-06 | Answer-text assertions use /flag an article by clicking/i not /flag an article/i | Consumer chips contain "How do I flag an article?" which matches the generic regex; after New Conversation/reload chips reappear causing false toHaveCount(0) failures. Full response text is collision-free. |
+
 **Plan 03-04 decisions (presentational-components):**
 
 | Plan  | Decision | Rationale |
@@ -241,10 +253,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-23 — Phase 3 Wave 3 (Plan 05) complete. Commits: 5b542c6 (feat usePrompts+Greeting+ChatPage+page.tsx) / c9c6bf8 (feat ChatSurface+Pitfall13+retry). 355/355 tests green. SUMMARY at .planning/phases/03-role-experience-and-chat-ui/03-05-SUMMARY.md.
-Stopped at: Phase 3 Wave 3 complete. Plan 06 unblocked.
+Last session: 2026-04-23 — Phase 3 Wave 4 (Plan 06) complete. Commits: b04eae5 (test fixtures+SC#1+SC#2) / 5bd69f4 (test SC#3/SC#4/SC#5+Pitfall13/17). 369 total tests green (355 unit + 14 E2E). SUMMARY at .planning/phases/03-role-experience-and-chat-ui/03-06-SUMMARY.md. Phase 3 COMPLETE.
+Stopped at: Phase 3 complete. Phase 4 unblocked.
 Resume signals (next session):
-  - Plan 06 (E2E/visual smoke) — exercises full ChatPage render path in Playwright against pnpm dev
+  - Phase 4 — Source Pane & Distinct Fallback UI
 Resume file: None
 
 **Deferred work tracked for v1.1 (post-Phase 2):**
