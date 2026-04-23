@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Grounding Foundation** — Source registry, citation contract, validator, LLM client, and MGTI smoke tests
 - [x] **Phase 2: Chat Backend (BFF)** — Streaming /api/chat with citation hold, fallback trigger, and entity-allowlist post-check
 - [x] **Phase 3: Role Experience & Chat UI** — Role select, role-aware chat, input, messages, feedback, and utility actions
-- [ ] **Phase 4: Source Panel, Trust & Fallback UI** — Source panel, colour coding, freshness, about-tooltip, distinct fallback UI, flag-a-gap
+- [x] **Phase 4: Source Panel, Trust & Fallback UI** — Source panel, colour coding, freshness, about-tooltip, distinct fallback UI, flag-a-gap
 - [ ] **Phase 5: SSO & Teams Delivery** — NAA client auth, Teams manifest, App Service deployment, CI/CD
 - [ ] **Phase 6: Telemetry, Evals & Pilot Hardening** — App Insights schema, eval suite hardening, rejected-article pull, pilot prep
 
@@ -125,10 +125,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 04-01-source-exposure-and-badge-constants-PLAN.md — canonical sourceBadges.ts + `/api/sources` + `/api/config` + CONTENT_STEWARD_EMAIL env var + dated SNOW_FORM version
-- [ ] 04-02-source-panel-and-chip-integration-PLAN.md — SourcePanel (Radix Dialog desktop pane + mobile drawer) + colour-coded clickable citation chips + ChatSurface wiring
-- [ ] 04-03-fallback-card-trust-header-about-tooltip-PLAN.md — FallbackCard (Pitfall 20 three-signal) + flag-a-gap mailto + freshness line + About Popover
-- [ ] 04-04-e2e-success-criteria-and-anchor-check-PLAN.md — 5 Playwright specs for SC#1–5 + anchorIds.test.ts (Pitfall 19) + Pitfall 16 + Pitfall 20 E2E assertions
+- [x] 04-01-source-exposure-and-badge-constants-PLAN.md — canonical sourceBadges.ts + `/api/sources` + `/api/config` + CONTENT_STEWARD_EMAIL env var + dated SNOW_FORM version (complete 2026-04-23)
+- [x] 04-02-source-panel-and-chip-integration-PLAN.md — SourcePanel (Radix Dialog desktop pane + mobile drawer) + colour-coded clickable citation chips + ChatSurface wiring (complete 2026-04-23)
+- [x] 04-03-fallback-card-trust-header-about-tooltip-PLAN.md — FallbackCard (Pitfall 20 three-signal) + flag-a-gap mailto + freshness line + About Popover (complete 2026-04-23)
+- [x] 04-04-e2e-success-criteria-and-anchor-check-PLAN.md — 5 Playwright specs for SC#1–5 + anchorIds.test.ts (Pitfall 19) + Pitfall 16 + Pitfall 20 E2E assertions (complete 2026-04-23)
 
 ---
 
@@ -184,7 +184,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Grounding Foundation | 5/5 | Complete | 2026-04-22 |
 | 2. Chat Backend (BFF) | 4/4 | Complete | 2026-04-22 |
 | 3. Role Experience & Chat UI | 6/6 | Complete | 2026-04-22 |
-| 4. Source Panel, Trust & Fallback UI | 0/TBD | Not started | - |
+| 4. Source Panel, Trust & Fallback UI | 4/4 | Complete | 2026-04-23 |
 | 5. SSO & Teams Delivery | 0/TBD | Not started | - |
 | 6. Telemetry, Evals & Pilot Hardening | 0/TBD | Not started | - |
 

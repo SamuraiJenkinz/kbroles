@@ -11,12 +11,12 @@ See: .planning/ROADMAP.md (6 phases, standard depth)
 
 ## Current Position
 
-Phase: 4 of 6 (Source Panel, Trust & Fallback UI) — COMPLETE
+Phase: 4 of 6 (Source Panel, Trust & Fallback UI) — COMPLETE + HUMAN-VERIFIED
 Plan: 4 (e2e-success-criteria-and-anchor-check) — COMPLETE
-Status: Plan 04-04 complete. 516 unit tests green (513 pre-existing + 3 new anchorIds). 19 E2E specs green (14 Phase-3 + 5 new Phase-4). `pnpm typecheck` clean. All 5 Phase-4 SCs proven by Playwright. Pitfall-19 Vitest unit test shipped. Pitfall-20 + Pitfall-16 E2E invariants enforced. Phase-4 behaviourally CLOSED. Phase 5 UNBLOCKED.
-Last activity: 2026-04-23 — Plan 04-04 complete. Commits: de22bb6 (fixtures+anchorIds) / 004ebf4 (SC#1/SC#2/SC#3 specs) / 0954be5 (SC#4/SC#5+regressions).
+Status: Phase 4 complete + verified. Verifier returned `human_needed` (5/5 programmatic SCs PASS; 4 items needed real-browser confirmation: 2s amber fade, ESC-to-close on Radix modal=false, mobile drawer <1024px, mailto Outlook CRLF). User confirmed 3/4 in browser 2026-04-23 (mobile drawer accepted as structurally verified). Two gaps closed during human verification and bundled into Phase-4 closure: (a) freshness line truncation — `sm:inline` doesn't respect `overflow:hidden`, switched to `sm:block` + `min-w-0 flex-1 truncate` (69ac805); (b) Radix Dialog accessibility warning — manual `id="source-panel-title"` on Dialog.Title + `aria-labelledby="source-panel-title"` on Dialog.Content bypassed Radix's useId-based title↔content auto-wiring, fired the "DialogContent requires a DialogTitle" dev overlay warning. Removed the manual overrides and let Radix wire automatically; migrated 3 Playwright specs from `[aria-labelledby="source-panel-title"]` to `[data-source-panel="true"]` selector (5961a06). Note: Plan 02's SUMMARY.md had flagged this warning as "harmless" — that was incorrect; dev-overlay warnings are real contract violations. Favicon 404 noted as known-deferred (trivial follow-up, out of Phase 4 scope). Final: 516 unit + 19 E2E = 535 total green; `pnpm typecheck` clean; VERIFICATION.md `passed`; 12 requirements (PANE-01..07, FBK-01/03/04, TRST-01/02) Complete. Phase 5 UNBLOCKED.
+Last activity: 2026-04-23 — Phase 4 closure. Commits: de22bb6 (fixtures+anchorIds) / 004ebf4 (SC#1/2/3 specs) / 0954be5 (SC#4/5+regressions) / a0d7778 (Plan 04-04 metadata) / 69ac805 (freshness truncate fix) / 5961a06 (Radix Dialog warning fix).
 
-Progress: [███████████████████████████████░░] Phase 1–4 of 6 complete; Phase 5 UNBLOCKED
+Progress: [████████████████████████████████░] Phases 1–4 of 6 complete; Phase 5 UNBLOCKED
 
 ## Performance Metrics
 
@@ -195,6 +195,14 @@ Decisions are logged in PROJECT.md Key Decisions table. Load-bearing decisions a
 | 04-04 | `locator('a', {hasText:/Opened in mail client/})` for post-click FallbackCard assertion | FallbackCard's `<a>` aria-label is static; only the text content node changes after setFlagged(true) |
 | 04-04 | `mockChatFallbackPage` name (not overwriting existing `mockChatFallback`) | Existing `mockChatFallback` takes Route not Page; creating a page-level variant alongside preserves Phase-3 call signatures |
 | 04-04 | Phase-3 regression fixes: suppress About popover in beforeEach, close panel before "New conversation", scope chip assertion to getByRole('button') | Phase-4 SourcePanel auto-open + AboutPopover first-run both affect Phase-3 specs that don't mock the new routes or suppress the popover |
+
+**Phase 4 human-verification gap closures (bundled into phase closure, not a new plan):**
+
+| Fix | Decision | Rationale |
+|-----|----------|-----------|
+| 69ac805 | FreshnessLine span changed from `sm:inline` to `sm:block` + `min-w-0 flex-1 truncate` | `display: inline` ignores `overflow: hidden`, so `truncate` was silently inactive. Text overflowed chat column's flex width and was visually clipped by the z-50 SourcePanel when panel opened on desktop. Caught by human browser verification — not in any unit or E2E test. |
+| 5961a06 | Removed manual `id="source-panel-title"` on Dialog.Title AND `aria-labelledby="source-panel-title"` on Dialog.Content; added `data-source-panel="true"` on Dialog.Content for E2E scoping; migrated 3 Playwright specs from aria-labelledby locator to data-source-panel | Radix Dialog auto-wires Title↔Content via `useId()`-generated titleId registered through context. Manual id/aria-labelledby overrides bypass that registration, so Radix's "is a title rendered?" check fails and fires the dev-only "DialogContent requires a DialogTitle" accessibility warning. Plan 02's SUMMARY.md flagged this warning as "harmless" — that was incorrect. **Lesson: dev-overlay warnings are real contract violations, not noise. Never dismiss them during plan execution.** |
+| N/A | Favicon 404 noted as known-deferred | Out of Phase 4 scope; trivial follow-up (add `public/favicon.ico`). Not a regression, not Phase 4 work. |
 
 **Plan 04-02 decisions (source-panel-and-chip-integration):**
 
