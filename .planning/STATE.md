@@ -12,18 +12,21 @@ See: .planning/ROADMAP.md (6 phases, standard depth)
 ## Current Position
 
 Phase: 5 of 6 (SSO & Teams Delivery) — IN PROGRESS
-Plan: 1 (auth-foundation) — COMPLETE
-Status: Plan 05-01 COMPLETE autonomous (2 tasks, no checkpoints). Deps installed — @azure/msal-browser@5.8.0 (minor-newer than plan-locked 5.6.3; within major 5, accepted per plan escape hatch — createNestablePublicClientApplication still exported), @azure/msal-react@5.3.1, @microsoft/teams-js@2.52.0, jose@6.2.2 (prod) + mock-jwks@3.3.5 (dev). `.npmrc` node-linker=hoisted created (Pitfall 10 pre-empt for Plan 05-05 Next.js standalone deploy). EnvSchema extended with ENTRA_CLIENT_ID + ENTRA_TENANT_ID (both optional + default 'dev-only-do-not-use-in-prod' so Phase 2/3/4 tests continue to pass without stubbing; Plan 03 middleware enforces real values via JWT verify). `src/auth/detectHost.ts` (Promise.race against microsoftTeams.app.initialize() with 150ms timeout, module-memoised, handles both hang AND reject paths). `src/auth/msalConfig.ts` (authority=login.microsoftonline.com/${tid} no /v2.0 suffix; cacheLocation=sessionStorage; SSR-guarded redirectUri; DEFAULT_SCOPES=[openid,profile,email,User.Read]). `src/auth/msalInstance.ts` (singleton via MSAL v5 createNestablePublicClientApplication — NAA entry point; hard-errors on server context). Anti-pattern greps clean: supportsNestedAppAuth (0), microsoftTeams.getAuthToken (0). DEVIATION (Rule 1 library drift): MSAL v5 BrowserAuthOptions dropped navigateToLoginRequestUrl AND CacheOptions dropped storeAuthStateInCookie; plan snippet targeted v3/v4. Removed both keys, added in-file drop documentation; defaults equivalent (state-capture on redirect; evergreen sessionStorage). 543/543 tests green (16 net-new vs plan start: 5 env + 4 detectHost + 7 msalConfig; additional deltas absorbed from parallel Plan 05-02 wave ErrorCard token_expired tests). Three pre-existing uncommitted Plan 05-02 residue edits left in working tree (ErrorCard.tsx/test + types.ts) — NOT my plan content, left for Plan 05-02 executor to fold.
-Last activity: 2026-04-23 — Plan 05-01 complete. Commits: 8bf2998 (chore deps+.npmrc+env) / ca833e6 (feat detectHost+msalConfig+msalInstance) + pending docs metadata commit.
+Plan: 2 of 5 (health-access-denied-token-expired) — COMPLETE (Wave 1, ran parallel with Plan 05-01)
+Status: Plan 05-02 shipped the three Wave-1 independent surfaces: (1) `GET /api/health` — Node-runtime Plan 05-05 CI/CD canary target with `{status, checks:{env, mgti}}` 200/503 shape, 5s `AbortSignal.timeout(5000)` on MGTI HEAD, `Cache-Control: no-cache, no-store, must-revalidate`, no auth (smoke hits this without a token; 401 from LLM_BASE_URL counts as reachable since <500). (2) `/access-denied` full-page block for wrong-tenant redirects — 'use client', `ShieldOff` accent, mailto assembled from `useConfig().contentStewardEmail` with `kb-knowledge-team@mmc.com` fallback, leak-invariant test asserts zero GUID-shaped strings AND zero "tenant"/"JWT"/"token" in copy. (3) `ErrorCode` 9th code `'token_expired'` added to client-side `src/chat-ui/types.ts` (server-side `src/chat/sse.ts` intentionally NOT touched — Plan 05-03 extends it when wiring the `/api/chat` emit path); `ErrorCard` TITLE map extended with `'Your session expired.'`; primary CTA branches to `'Sign back in'` and sub-copy branches to `'Sign back in to continue — your question was not answered.'` when `errorCode === 'token_expired'`; `onRetry` wiring UNCHANGED — Plan 05-04 swaps the ChatSurface call-site to invoke MSAL `acquireTokenSilent` → fallback `acquireTokenRedirect`. Grep verify: repo-wide `switch (errorCode` → 0 matches; `Record<ErrorCode,` → 1 site (`ErrorCard.TITLE`, updated); no exhaustiveness arms needed anywhere (chatReducer + useChatStream treat `errorCode` as pass-through). Wave-1 residue note from Plan 05-01 (the three pre-existing uncommitted ErrorCard/types.ts edits) is resolved — those were my Plan 05-02 Task-2 edits, now committed atomically in 75117a1. Zero Phase 2/3/4 regressions; 548/548 unit tests green (+5 net vs Plan 05-01's 543 after the wave already absorbed 05-02 tests: actual net for 05-02 is 16 — 6 health route + 5 access-denied page + 5 new ErrorCard token_expired tests including 5th it.each permutation). `pnpm typecheck` clean. Plan 05-03/04/05 UNBLOCKED.
 
-Progress: [████████████████████████████████░] Phases 1–4 of 6 complete; Phase 5 Plan 01 of 5 complete; Plans 02–05 pending
+**Plan 05-01 (prior)** — Plan 05-01 COMPLETE autonomous (2 tasks, no checkpoints). Deps installed — @azure/msal-browser@5.8.0 + @azure/msal-react@5.3.1 + @microsoft/teams-js@2.52.0 + jose@6.2.2 (prod) + mock-jwks@3.3.5 (dev). `.npmrc node-linker=hoisted` created (Pitfall 10 pre-empt for Plan 05-05 Next.js standalone deploy). EnvSchema extended with ENTRA_CLIENT_ID + ENTRA_TENANT_ID (both optional + default 'dev-only-do-not-use-in-prod'). `src/auth/detectHost.ts` + `src/auth/msalConfig.ts` + `src/auth/msalInstance.ts` shipped. Anti-pattern greps clean. DEVIATION (Rule 1 library drift): MSAL v5 dropped navigateToLoginRequestUrl + storeAuthStateInCookie — removed, in-file comments document drop; defaults equivalent.
+
+Last activity: 2026-04-23 — Plan 05-02 complete. Commits: cf3a068 (feat /api/health + /access-denied + 11 new tests) / 75117a1 (feat token_expired 9th ErrorCode + Sign back in CTA + 5 new tests) + pending docs metadata commit. Plan 05-01 commits: 8bf2998 (chore deps+.npmrc+env) / ca833e6 (feat detectHost+msalConfig+msalInstance) + pending docs metadata.
+
+Progress: [████████████████████████████████░] Phases 1–4 of 6 complete; Phase 5 Plans 01+02 of 5 complete (Wave 1 done); Plans 03–05 pending
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 16
-- Average duration: ~8.6 min active
-- Total execution time: ~155 min active (Plan 01 wall-clock includes ~1h 44min human-loop prod-smoke checkpoint)
+- Total plans completed: 17
+- Average duration: ~8.4 min active
+- Total execution time: ~161 min active (Plan 01 wall-clock includes ~1h 44min human-loop prod-smoke checkpoint)
 
 **By Phase:**
 
@@ -33,7 +36,7 @@ Progress: [███████████████████████
 | 2 — Chat Backend BFF     | 4 / 4 (complete) | ~50 min active | ~12.5 min |
 | 3 — Role Experience & Chat UI | 6 / 6 complete | ~38 min (Plans 01–06) | ~6.3 min |
 | 4 — Source Panel, Trust & Fallback UI | 4 / 4 complete | ~53 min (Plans 01–04) | ~13.3 min |
-| 5 — SSO & Teams Delivery | 1 / 5 complete | ~5.5 min (Plan 01 only) | ~5.5 min |
+| 5 — SSO & Teams Delivery | 2 / 5 complete | ~11.1 min (Plans 01–02, Wave 1) | ~5.6 min |
 
 **Recent Trend:**
 - 01-scaffold-registry-schema: 7 min, 8 tasks, 6 feat commits + 1 docs metadata commit, 23/23 tests green
@@ -54,6 +57,7 @@ Progress: [███████████████████████
 - 03-02-pure-primitives: ~3 min active; 2 tasks autonomous; commits 960d164 (feat types+reducer) + 19cc9f3 (co-committed wave-1 feat time+sourceTitles); 264/264 tests green (40 new: 20 reducer + 13 time + 7 sourceTitles); wire types + pure chat reducer (12 actions) + formatRelative + sourceTitles; zero new dependencies
 - 03-01-scaffold-ui-stack: ~4 min active; 2 tasks autonomous (no checkpoints); 2 commits 5465be6 (chore deps) / 19cc9f3 (feat shell) + pending docs metadata; 264/264 tests green (absorbed 20 tests from Wave-1 parallel Plan 02: time.ts formatRelative + sourceTitles); Tailwind v4 + 4 Radix packages + lucide-react + clsx + tailwind-merge + @vitejs/plugin-react@5.2.0 + RTL + jsdom + Playwright@1.59.1 + chromium installed; postcss.config.mjs + playwright.config.ts created; root app shell (layout/globals.css/providers/page) live
 - 05-01-auth-foundation: ~5.5 min active; 2 tasks autonomous (no checkpoints); 2 commits 8bf2998 (chore deps+.npmrc+env) / ca833e6 (feat detectHost+msalConfig+msalInstance) + pending docs metadata; 543/543 tests green (16 net-new attributable to 05-01: 5 env + 4 detectHost + 7 msalConfig; additional absorbed from parallel Plan 05-02 wave — ErrorCard token_expired tests); @azure/msal-browser@5.8.0 + @azure/msal-react@5.3.1 + @microsoft/teams-js@2.52.0 + jose@6.2.2 (prod) + mock-jwks@3.3.5 (dev) installed; `.npmrc node-linker=hoisted` created (Pitfall 10 pre-empt); EnvSchema.ENTRA_CLIENT_ID + ENTRA_TENANT_ID added with dev placeholder defaults; src/auth/ library (detectHost + msalConfig + msalInstance) with 11 Vitest tests; anti-pattern greps clean (supportsNestedAppAuth=0, microsoftTeams.getAuthToken=0); 1 Rule-1 auto-fix (MSAL v5 dropped navigateToLoginRequestUrl + storeAuthStateInCookie — removed, in-file comments document the drop, defaults equivalent)
+- 05-02-health-access-denied-token-expired: ~5.6 min active; 2 tasks autonomous (no checkpoints); 2 commits cf3a068 (feat /api/health + /access-denied + 11 new tests) / 75117a1 (feat token_expired 9th ErrorCode + Sign back in CTA + 5 new tests) + pending docs metadata; 548/548 tests green (+16 net: 6 health route + 5 access-denied page + 5 ErrorCard token_expired including 5th it.each permutation); `/api/health` Node-runtime canary with 5s AbortSignal.timeout(5000) + no-cache headers; `/access-denied` leak-invariant enforced (no GUID/tenant/JWT/token in copy); client-side ErrorCode extended with token_expired (server-side sse.ts left for Plan 05-03 to extend); ErrorCard branches primaryLabel + subCopy, onRetry wiring unchanged; no exhaustiveness switch sites existed on errorCode (grep switch (errorCode=0, Record<ErrorCode,=1 which was the TITLE map); Wave-1 parallel with Plan 05-01 — zero file collisions, Plan 05-01's three "residue" notes resolved (those were my Task-2 edits, now atomic-committed); zero new dependencies
 
 *Updated after each plan completion*
 
@@ -220,6 +224,20 @@ Decisions are logged in PROJECT.md Key Decisions table. Load-bearing decisions a
 | 05-01 | ENTRA_CLIENT_ID / ENTRA_TENANT_ID are optional with dev-placeholder defaults (NOT required strings) | Phase 2/3/4 test suites load env without Entra values. Forcing them to stub ENTRA_* would touch 200+ existing test calls. Production `loadEnv()` paths still get real values via App Service Application Settings; Plan 03 middleware's JWT verification is the authoritative production guard (`'dev-only-do-not-use-in-prod'` as a tenant GUID would fail JWT issuer match immediately). |
 | 05-01 | EnvSchema extension uses z.string().min(1).optional().default(...) not z.string().default(...) | `.min(1)` rejects empty strings (test proves this), keeping the "if set, must be non-empty" contract. Bare `z.string().default(...)` would accept `ENTRA_CLIENT_ID=''` as valid, which is a silent misconfiguration hazard. |
 
+**Plan 05-02 decisions (health-access-denied-token-expired):**
+
+| Plan  | Decision | Rationale |
+|-------|----------|-----------|
+| 05-02 | Server-side `src/chat/sse.ts` ErrorCode NOT extended with `token_expired` here — deferred to Plan 05-03 | Plan 05-03 owns the `/api/chat` server-side emit path for the 9th code. Client-side ErrorCode union widening (`src/chat-ui/types.ts`) propagates through `SseEvent.error.code` automatically since ErrorCode is a discriminated-union member; the server type stays 4-member until Plan 05-03 wires the emit site. Keeping the two sides in separate commits means server changes can be reverted independently of client UI copy. |
+| 05-02 | Mutable module-level `mockConfigValue` for access-denied null-config fallback test (not `vi.doMock` post-import) | `vi.doMock()` mocks DYNAMIC `import()` calls but does NOT retroactively swap ES-module bindings already imported at top-level — those bindings are frozen when the test file loads. Pattern: single `vi.mock` factory reads `mockConfigValue` (let-mutable) at call time; individual tests flip it to `null` before `render()`. `beforeEach/afterEach` resets to the default mock shape. |
+| 05-02 | No exhaustiveness-switch arms needed anywhere for `token_expired` | Repo-wide grep for `switch (errorCode` returns 0 matches; grep for `Record<ErrorCode,` returns exactly 1 site (`ErrorCard.TITLE`), which was updated. `chatReducer` treats `errorCode` as a pass-through stored field (no branching on value); `useChatStream` propagates the typed value to dispatch without switching. No `'internal'`-mirror arms required. |
+| 05-02 | `/api/health` uses `AbortSignal.timeout(5_000)` (static factory) not `new AbortController()` + `setTimeout` | Node 20.9+ exports `AbortSignal.timeout()` as a static factory that auto-fires after the given ms. Simpler than controller+setTimeout pattern (no cleanup, no timer handle to manage). Aligns with RESEARCH §Pattern 9 which specified this exact call shape. |
+| 05-02 | `/api/health` returns `Cache-Control: no-cache, no-store, must-revalidate` on EVERY response (200 AND 503) | Smoke target MUST bypass all caches — a 200 cached during a previous green deploy could mask a newly-broken deploy for up to the cache TTL. The `must-revalidate` directive also protects against misbehaving proxies that serve stale responses. |
+| 05-02 | `/access-denied` leak-invariant test uses `\b...\b` word boundaries (not bare substring matching) | Prevents false positives from incidental substrings (e.g. "content steward" matches `/steward/` but not `/\btenant\b/`). GUID-prefix regex `[0-9a-f]{8}-[0-9a-f]{4}` (case-insensitive) catches both Entra `tid` and `oid` GUID prefixes; full-GUID match would be overly specific and miss partial leaks. |
+| 05-02 | ErrorCard branches via in-line ternaries on `errorCode === 'token_expired'` rather than a second Record<ErrorCode,...> map | Only two codes have distinct CTA wording today (everything else collapses to Retry). A second Record-map would force 9 entries for a 1:8 split. Ternary keeps the branch tight and co-located with the JSX that uses it. If a third branched code appears, the ternaries can be promoted to a map-lookup at that time. |
+| 05-02 | Wave-1 parallel-commit resolution: Plan 05-01's "residue" note (ErrorCard/types.ts edits left uncommitted) was resolved by Task 2's atomic commit 75117a1 | Plan 05-01's executor ran ahead and saw my Task-2 edits in the working tree but correctly recognised they weren't its files and left them alone. My Plan 05-02 then committed those same edits atomically. This is the clean wave-parallel outcome per GSD atomic-commit discipline; same pattern as Plan 03-02/03-01 Wave-1 absorption in prior phases. |
+| 05-02 | Access-denied page copy deliberately OMITS the word "token" even though CONTEXT §Blocked-user UX only forbids "tenant"/"JWT"/"GUID-shapes" | Defence in depth — "token" is a technical auth term that leaks implementation detail to non-technical users. Test invariant includes `/\btoken\b/i` to lock this. Zero production user benefit from the word; strict absence is the simpler contract. |
+
 **Plan 04-02 decisions (source-panel-and-chip-integration):**
 
 | Plan  | Decision | Rationale |
@@ -337,13 +355,15 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-23 — Plan 05-01 auth-foundation complete. Commits: 8bf2998 (chore deps+.npmrc+env) / ca833e6 (feat detectHost+msalConfig+msalInstance) + pending docs metadata commit. 543 total unit tests green; 19 E2E specs green. SUMMARY at .planning/phases/05-sso-and-teams-delivery/05-01-SUMMARY.md. Non-05-01 commit `cf3a068 feat(05-02): add /api/health canary + /access-denied page` is a parallel Plan 05-02 partial execution (three files still uncommitted in working tree per Plan 05-02's own scope).
-Stopped at: Plan 05-01 COMPLETE.
+Last session: 2026-04-23 — Plan 05-02 health-access-denied-token-expired complete. Commits: cf3a068 (feat /api/health + /access-denied + 11 new tests) / 75117a1 (feat token_expired 9th ErrorCode + Sign back in CTA + 5 new tests) + pending docs metadata commit. 548/548 unit tests green; 19 E2E specs green; `pnpm typecheck` clean. SUMMARY at .planning/phases/05-sso-and-teams-delivery/05-02-SUMMARY.md. Plan 05-01's residue note resolved — the working-tree ErrorCard/types.ts edits were my Task-2 work, now atomic-committed in 75117a1. Wave 1 of Phase 5 COMPLETE (Plans 01+02 shipped in parallel, zero file collisions, zero Phase 2/3/4 regressions).
+
+Prior session: 2026-04-23 — Plan 05-01 auth-foundation complete. Commits: 8bf2998 (chore deps+.npmrc+env) / ca833e6 (feat detectHost+msalConfig+msalInstance) + pending docs metadata commit.
+
+Stopped at: Phase 5 Wave 1 COMPLETE (Plans 01+02 of 5 done).
 Resume signals (next session):
-  - Plan 05-02 health-access-denied-token-expired: executor to fold working-tree residue (ErrorCard/types.ts token_expired edits) into its own commits; may already be partially done
-  - Plan 05-03 middleware-jwt-validation: UNBLOCKED (jose + ENTRA_* env ready)
-  - Plan 05-04 auth-provider-redirect-bridge-signout: UNBLOCKED but sequence after 05-03
-  - Plan 05-05 teams-manifest-cicd-deploy: UNBLOCKED but sequence last (.npmrc ready)
+  - Plan 05-03 middleware-jwt-validation: UNBLOCKED (jose + ENTRA_* env ready from 05-01; client-side ErrorCode token_expired ready from 05-02 — 05-03 extends server-side sse.ts + wires /api/chat emit)
+  - Plan 05-04 auth-provider-redirect-bridge-signout: UNBLOCKED but sequence after 05-03; ChatSurface call-site re-wire for token_expired CTA lives here
+  - Plan 05-05 teams-manifest-cicd-deploy: UNBLOCKED (.npmrc ready, /api/health canary ready); sequence last
 Resume file: None
 
 **Deferred work tracked for v1.1 (post-Phase 2):**
