@@ -4,6 +4,7 @@ import { chatReducer, initialChatState } from './chatReducer'
 import { useChatStream } from './useChatStream'
 import { useDraftBuffer } from './useDraftBuffer'
 import { usePrompts } from './usePrompts'
+import { usePanelState } from './usePanelState'
 import type { Role, SseEvent, Message } from './types'
 import { Header } from './Header'
 import { Greeting } from './Greeting'
@@ -11,6 +12,8 @@ import { MessageList } from './MessageList'
 import { ChipRow } from './ChipRow'
 import { InputBar } from './InputBar'
 import { ChangeRoleDialog } from './ChangeRoleDialog'
+import { SourcePanel } from './SourcePanel'
+import { cn } from './cn'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -53,6 +56,9 @@ export function ChatSurface({
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const [changeRoleOpen, setChangeRoleOpen] = useState(false)
 
+  // ── Panel state (Phase 4 — source panel open/closed + loaded source) ────────
+  const panel = usePanelState()
+
   // ── Event handler: routes SSE events into chatReducer ──────────────────────
   // (LOCKED event→dispatch map from plan context)
   const handleEvent = useCallback((ev: SseEvent, requestId: string) => {
@@ -64,6 +70,11 @@ export function ChatSurface({
         break
       case 'citations':
         dispatch({ type: 'assistant/citations', id, citations: ev.citations })
+        // Phase 4: auto-open panel on first citation in session (CONTEXT §Auto-open trigger)
+        if (ev.citations.length > 0) {
+          const first = ev.citations[0]
+          panel.autoOpenOnFirstCitation(first.source_id, first.section_id)
+        }
         break
       case 'done':
         dispatch({ type: 'assistant/done', id })
@@ -78,7 +89,8 @@ export function ChatSurface({
         asstIdRef.current = null
         break
     }
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panel.autoOpenOnFirstCitation])
 
   const { send, stop, isStreaming } = useChatStream(handleEvent)
 
@@ -108,12 +120,13 @@ export function ChatSurface({
     dispatch({ type: 'conversation/clear' })
     clearDraft()
     asstIdRef.current = null
+    panel.resetSession()  // re-arm auto-open latch for new session
     inputRef.current?.focus()
-  }, [state.inFlightId, stop, clearDraft])
+  }, [state.inFlightId, stop, clearDraft, panel.resetSession])
 
   // ── Change role confirm (Pitfall 13 LOCKED ORDER) ─────────────────────────
   // Order: stop() → conversation/clear → asstIdRef=null → setChangeRoleOpen(false)
-  //        → onChangeRole() [sets role=null in ChatPage] → clearDraft()
+  //        → onChangeRole() [sets role=null in ChatPage] → clearDraft() → resetSession()
   const handleConfirmChangeRole = useCallback(() => {
     stop()                                    // 1. abort in-flight stream
     dispatch({ type: 'conversation/clear' })  // 2. wipe messages + inFlightId
@@ -121,7 +134,8 @@ export function ChatSurface({
     setChangeRoleOpen(false)                  // 4. close dialog
     onChangeRole()                            // 5. setRole(null) in ChatPage → unmounts us
     clearDraft()                              // 6. clear sessionStorage draft
-  }, [stop, onChangeRole, clearDraft])
+    panel.resetSession()                      // 7. re-arm auto-open for next role session
+  }, [stop, onChangeRole, clearDraft, panel.resetSession])
 
   // ── Stop (inline stop button) ──────────────────────────────────────────────
   const handleStop = useCallback(() => {
@@ -180,41 +194,52 @@ export function ChatSurface({
   const isEmpty = state.messages.length === 0
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <Header
-        role={role}
-        onChangeRole={() => setChangeRoleOpen(true)}
-        onNewConversation={handleNewConversation}
-      />
-      <main className="flex flex-1 flex-col overflow-hidden">
-        <div className="flex-1 overflow-y-auto">
-          {isEmpty && <Greeting role={role} />}
-          <MessageList
-            messages={state.messages}
-            inFlightId={state.inFlightId}
-            onCopy={() => { /* copy handled internally by AssistantControls */ }}
-            onFeedback={handleFeedback}
-            onRetry={handleRetry}   // consumes Plan 04's onRetry prop (no mutation)
-          />
-        </div>
-        {isEmpty && (
-          <ChipRow chips={chips} onChip={dispatchSend} disabled={isStreaming} />
-        )}
-        <InputBar
-          ref={inputRef}           // consumes Plan 04's forwardRef (no mutation)
-          value={draft}
-          onChange={setDraft}
-          onSubmit={() => dispatchSend(draft)}
-          onStop={handleStop}
-          isStreaming={isStreaming}
-          placeholder={PLACEHOLDER[role]}
-          hintVisible={isEmpty}
+    <div className={cn('flex min-h-screen flex-col bg-background', panel.open && 'lg:flex-row')}>
+      {/* Chat column — shrinks to 60% on desktop when panel is open */}
+      <div className={cn('flex min-h-0 flex-1 flex-col', panel.open && 'lg:w-[60%]')}>
+        <Header
+          role={role}
+          onChangeRole={() => setChangeRoleOpen(true)}
+          onNewConversation={handleNewConversation}
         />
-      </main>
+        <main className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto">
+            {isEmpty && <Greeting role={role} />}
+            <MessageList
+              messages={state.messages}
+              inFlightId={state.inFlightId}
+              onCopy={() => { /* copy handled internally by AssistantControls */ }}
+              onFeedback={handleFeedback}
+              onRetry={handleRetry}   // consumes Plan 04's onRetry prop (no mutation)
+              onChipClick={panel.chipClick}
+              activeSource={panel.loaded}
+            />
+          </div>
+          {isEmpty && (
+            <ChipRow chips={chips} onChip={dispatchSend} disabled={isStreaming} />
+          )}
+          <InputBar
+            ref={inputRef}           // consumes Plan 04's forwardRef (no mutation)
+            value={draft}
+            onChange={setDraft}
+            onSubmit={() => dispatchSend(draft)}
+            onStop={handleStop}
+            isStreaming={isStreaming}
+            placeholder={PLACEHOLDER[role]}
+            hintVisible={isEmpty}
+          />
+        </main>
+      </div>
       <ChangeRoleDialog
         open={changeRoleOpen}
         onOpenChange={setChangeRoleOpen}
         onConfirm={handleConfirmChangeRole}
+      />
+      {/* Source panel — desktop persistent pane, mobile overlay drawer */}
+      <SourcePanel
+        open={panel.open}
+        loaded={panel.loaded}
+        onClose={panel.closePanel}
       />
     </div>
   )

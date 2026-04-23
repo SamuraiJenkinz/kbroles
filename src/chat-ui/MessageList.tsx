@@ -9,12 +9,16 @@ export function MessageList({
   onCopy,
   onFeedback,
   onRetry,
+  onChipClick,
+  activeSource,
 }: {
   messages: MessageType[]
   inFlightId: string | null
   onCopy?: (id: string) => void
   onFeedback?: (id: string, next: Feedback | null) => void
   onRetry?: (id: string) => void
+  onChipClick?: (source_id: string, section_id: string) => void
+  activeSource?: { source_id: string; section_id: string } | null
 }) {
   if (messages.length === 0) return null
 
@@ -47,6 +51,8 @@ export function MessageList({
             onCopy={onCopy}
             onFeedback={onFeedback}
             onRetry={onRetry}
+            onChipClick={onChipClick}
+            activeSource={activeSource}
           />
         )
       })}
