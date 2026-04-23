@@ -1,4 +1,10 @@
 // @vitest-environment jsdom
+/**
+ * ChatSurface integration tests.
+ *
+ * Plan 04-03: Header now includes AboutPopover (Radix Popover) which requires
+ * ResizeObserver — polyfilled below since jsdom doesn't implement it.
+ */
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -6,6 +12,16 @@ import * as Tooltip from '@radix-ui/react-tooltip'
 import { ChatSurface } from '../ChatSurface'
 import { ChatPage } from '../ChatPage'
 import type { ChipItem, Role } from '../types'
+import { __resetConfigCacheForTests } from '../useConfig'
+
+// ─── ResizeObserver polyfill (Radix Popover/AboutPopover requires it) ───────────
+if (typeof ResizeObserver === 'undefined') {
+  global.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+}
 
 // ─── Mock source content ───────────────────────────────────────────────────────
 
@@ -97,6 +113,11 @@ function setupFetch(handler: FetchHandler) {
   return spy
 }
 
+const MOCK_CONFIG_RESPONSE = {
+  versions: { KB0022991: '13.0', KB0020882: '9.0', SNOW_FORM: '2026-04-23' },
+  contentStewardEmail: 'kb-knowledge-team@mmc.com',
+}
+
 function defaultHandler(
   chatResponse: () => Promise<Response>,
   role: Role = 'consumer',
@@ -115,6 +136,10 @@ function defaultHandler(
       // Phase 4: SourcePanel fetches section content when panel opens
       return Promise.resolve(jsonResponse(sourceContent))
     }
+    if (url.includes('/api/config')) {
+      // Plan 04-03: Header FreshnessLine fetches /api/config
+      return Promise.resolve(jsonResponse(MOCK_CONFIG_RESPONSE))
+    }
     return Promise.reject(new Error(`Unexpected fetch: ${url}`))
   }
 }
@@ -124,6 +149,11 @@ function defaultHandler(
 beforeEach(() => {
   vi.restoreAllMocks()
   sessionStorage.clear()
+  localStorage.clear()
+  // Prevent About popover first-run auto-open from interfering with chip-count tests.
+  // The popover's <li> bullets would be counted as listitems by queryAllByRole('listitem').
+  localStorage.setItem('about_tooltip_seen_v1', 'true')
+  __resetConfigCacheForTests()
   // Clipboard stub
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
@@ -135,6 +165,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks()
   sessionStorage.clear()
+  localStorage.clear()
+  __resetConfigCacheForTests()
 })
 
 // ─── Tests ─────────────────────────────────────────────────────────────────────
@@ -211,6 +243,9 @@ describe('ChatSurface', () => {
       if (url.includes('/api/sources')) {
         return Promise.resolve(jsonResponse(MOCK_SOURCE_CONTENT))
       }
+      if (url.includes('/api/config')) {
+        return Promise.resolve(jsonResponse(MOCK_CONFIG_RESPONSE))
+      }
       return Promise.resolve(sseResponse([
         '{"type":"done","can_answer":true,"validator_flips":0}',
       ]))
@@ -254,6 +289,9 @@ describe('ChatSurface', () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, init: RequestInit) => {
       if (url.includes('/api/prompts')) {
         return Promise.resolve(promptsResponse('consumer', consumerChips))
+      }
+      if (url.includes('/api/config')) {
+        return Promise.resolve(jsonResponse(MOCK_CONFIG_RESPONSE))
       }
       capturedSignal = init.signal as AbortSignal
       // fetch hangs forever (never resolves). useChatStream will be in isStreaming=true
@@ -341,6 +379,9 @@ describe('ChatSurface', () => {
       if (url.includes('/api/prompts')) {
         return Promise.resolve(promptsResponse('consumer', consumerChips))
       }
+      if (url.includes('/api/config')) {
+        return Promise.resolve(jsonResponse(MOCK_CONFIG_RESPONSE))
+      }
       capturedSignal = init.signal as AbortSignal
       // Never-resolving fetch — keeps isStreaming=true so stop() actually fires abort
       return new Promise<Response>((_, reject) => {
@@ -415,6 +456,9 @@ describe('ChatSurface', () => {
       }
       if (url.includes('/api/sources')) {
         return Promise.resolve(jsonResponse(MOCK_SOURCE_CONTENT))
+      }
+      if (url.includes('/api/config')) {
+        return Promise.resolve(jsonResponse(MOCK_CONFIG_RESPONSE))
       }
       callCount++
       if (callCount === 1) {
@@ -568,6 +612,9 @@ describe('ChatSurface', () => {
       if (url.includes('/api/sources')) {
         return Promise.resolve(jsonResponse(MOCK_SOURCE_CONTENT))
       }
+      if (url.includes('/api/config')) {
+        return Promise.resolve(jsonResponse(MOCK_CONFIG_RESPONSE))
+      }
       capturedSignal = init.signal as AbortSignal
       return new Promise<Response>((_, reject) => {
         const signal = init.signal as AbortSignal
@@ -627,6 +674,9 @@ describe('ChatSurface', () => {
       if (url.includes('/api/prompts')) {
         return Promise.resolve(promptsResponse('consumer', consumerChips))
       }
+      if (url.includes('/api/config')) {
+        return Promise.resolve(jsonResponse(MOCK_CONFIG_RESPONSE))
+      }
       const stream = new ReadableStream<Uint8Array>({
         start(c) { _ctrl = c },
       })
@@ -669,6 +719,9 @@ describe('ChatPage', () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
       if (url.includes('/api/prompts')) {
         return Promise.resolve(promptsResponse('author', authorChips))
+      }
+      if (url.includes('/api/config')) {
+        return Promise.resolve(jsonResponse(MOCK_CONFIG_RESPONSE))
       }
       return Promise.resolve(sseResponse([]))
     }))
