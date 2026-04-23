@@ -12,17 +12,17 @@ See: .planning/ROADMAP.md (6 phases, standard depth)
 ## Current Position
 
 Phase: 4 of 6 (Source Panel, Trust & Fallback UI) — In Progress
-Plan: 2 (source-panel-and-chip-integration) — COMPLETE
-Status: Plan 04-02 complete. 462 unit tests green (410 pre-existing + 52 new). `pnpm typecheck` clean. SourcePanel (Radix Dialog desktop pane + mobile drawer), usePanelState, useSourceContent, renderSectionMarkdown, citation chip upgrade, ChatSurface wiring all shipped. Plans 03–04 unblocked.
-Last activity: 2026-04-23 — Plan 04-02 complete. Commits: d529cfd (hooks+renderer) / a567e62 (SourcePanel+CSS) / 0a4ef3d (chip+ChatSurface).
+Plan: 3 (fallback-card-trust-header-about-tooltip) — COMPLETE
+Status: Plan 04-03 complete. 513 unit tests green (462 pre-existing + 51 new). `pnpm typecheck` clean. FallbackCard (Pitfall-20 three-signal), mailto builder, useConfig, useAboutTooltip, AboutPopover (Radix), freshness line in Header, requestId plumbed through fallback action all shipped. Plan 04 unblocked.
+Last activity: 2026-04-23 — Plan 04-03 complete. Commits: 6ceb1d9 (primitives) / 1fe612e (FallbackCard+MessageList+Message) / e98fac8 (AboutPopover+Header+ChatSurface).
 
-Progress: [██████████████████████████░░░░░░] Phase 1–3 of 6 complete; Phase 4 Plan 2/4 complete
+Progress: [████████████████████████████░░░░] Phase 1–3 of 6 complete; Phase 4 Plan 3/4 complete
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13
-- Average duration: ~8.4 min active
+- Total plans completed: 14
+- Average duration: ~8.5 min active
 - Total execution time: ~112 min active (Plan 01 wall-clock includes ~1h 44min human-loop prod-smoke checkpoint)
 
 **By Phase:**
@@ -174,6 +174,17 @@ Decisions are logged in PROJECT.md Key Decisions table. Load-bearing decisions a
 | 04-01 | /api/config test mocks env() via vi.mock('@/config/env') | Route calls env() which validates LLM_* vars absent from test env; mock returns controlled Env object |
 | 04-01 | sourceTitles.ts Phase-3 legacy keys preserved | UTIL-01 tests reference 'resolution', 'form-fields' etc; removing would break 7 existing tests |
 
+**Plan 04-03 decisions (fallback-card-trust-header-about-tooltip):**
+
+| Plan  | Decision | Rationale |
+|-------|----------|-----------|
+| 04-03 | FallbackCard rendered by MessageList (not Message.tsx) | Clean Pitfall-20 separation — routing at MessageList level prevents any chance of the isFallback branch being re-introduced in Message |
+| 04-03 | Flag link is `<a href={mailtoHref}>` not `window.location.href` | href is part of DOM so Playwright can assert `toHaveAttribute('href', /^mailto:/)` without window.location monkeypatching (unreliable in real Chromium where window.location is non-configurable) |
+| 04-03 | CRLF (%0D%0A) in mailto body | Outlook on Windows renders bare %0A (LF-only) as literal \\n in some configurations; CRLF is the RFC-2368 safe choice |
+| 04-03 | ResizeObserver no-op polyfill inline per test file | Radix Popover's react-use-size hook requires ResizeObserver; jsdom doesn't implement it; inline polyfill keeps scope narrow vs adding to global vitest setup |
+| 04-03 | `localStorage.setItem('about_tooltip_seen_v1', 'true')` in ChatSurface beforeEach | AboutPopover auto-open produces 3 `<li>` bullets counted by `queryAllByRole('listitem')`; seeding seen=true prevents interference with chip-count assertions |
+| 04-03 | Module-level useConfig cache + `__resetConfigCacheForTests()` | Multiple components share one /api/config fetch per page load; test-only reset function keeps hook tests hermetic |
+
 **Plan 04-02 decisions (source-panel-and-chip-integration):**
 
 | Plan  | Decision | Rationale |
@@ -281,10 +292,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-23 — Plan 04-02 complete. Commits: d529cfd (hooks+renderer) / a567e62 (SourcePanel+CSS) / 0a4ef3d (chip+ChatSurface) + pending docs metadata. 462 total unit tests green. SUMMARY at .planning/phases/04-source-panel-trust-and-fallback-ui/04-02-SUMMARY.md.
-Stopped at: Phase 4 Plan 2 complete.
+Last session: 2026-04-23 — Plan 04-03 complete. Commits: 6ceb1d9 (primitives) / 1fe612e (FallbackCard+MessageList+Message) / e98fac8 (AboutPopover+Header+ChatSurface). 513 total unit tests green. SUMMARY at .planning/phases/04-source-panel-trust-and-fallback-ui/04-03-SUMMARY.md.
+Stopped at: Phase 4 Plan 3 complete.
 Resume signals (next session):
-  - Phase 4 Plan 3 — fallback-card-trust-header-about-tooltip
+  - Phase 4 Plan 4 — e2e-success-criteria-and-anchor-check
 Resume file: None
 
 **Deferred work tracked for v1.1 (post-Phase 2):**
