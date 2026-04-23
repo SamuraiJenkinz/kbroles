@@ -80,6 +80,58 @@ const EnvSchema = z.object({
     .min(1)
     .optional()
     .default('dev-only-do-not-use-in-prod'),
+
+  // Phase-5.1 BFF pivot — SERVER-ONLY auth + deploy config.
+  //
+  // These five fields are populated EITHER by AWS Secrets Manager via
+  // loadSecrets() (production path) OR by process.env / .env.local (dev path).
+  // loadSecrets() writes resolved values back onto process.env BEFORE env()
+  // reparses, so the zod validation here runs once on the final set.
+  //
+  // SESSION_SECRET must be >=32 chars (iron-session AES-256-GCM key derivation
+  // requirement — iron-session throws at getIronSession() call time otherwise).
+  // A development default is provided so Phase 2/3/4 test suites don't need
+  // to stub it, but the production-grade path is enforced at runtime by
+  // iron-session itself (not duplicated here).
+  //
+  // ENTRA_CLIENT_SECRET is the confidential-client secret from the Entra App
+  // Registration. Unlike the Phase-5 SPA (which has no client secret), the
+  // BFF confidential-client flow REQUIRES one. Dev default mirrors the
+  // Phase-5 pattern: a non-secret placeholder string that fails obviously in
+  // production logs but does not crash tests.
+  //
+  // APP_BASE_URL is the canonical origin used in BOTH (a) the Entra redirect
+  // URI construction (Pitfall 4) and (b) the Set-Cookie Domain scoping. MUST
+  // match the Entra App Registration redirect URI exactly — even a trailing
+  // slash difference causes AADSTS50011.
+  //
+  // AWS_SECRET_NAME + AWS_REGION — inputs to loadSecrets(). Defaults match
+  // xmcp's convention (/mmc/cts/<app> in us-east-1).
+  SESSION_SECRET: z
+    .string()
+    .min(1)
+    .optional()
+    .default('dev-only-session-secret-32-chars-min-padding-xxxxxxx'),
+  ENTRA_CLIENT_SECRET: z
+    .string()
+    .min(1)
+    .optional()
+    .default('dev-only-do-not-use-in-prod'),
+  APP_BASE_URL: z
+    .string()
+    .url()
+    .optional()
+    .default('http://localhost:3000'),
+  AWS_SECRET_NAME: z
+    .string()
+    .min(1)
+    .optional()
+    .default('/mmc/cts/kb-assistant'),
+  AWS_REGION: z
+    .string()
+    .min(1)
+    .optional()
+    .default('us-east-1'),
 })
 
 export type Env = z.infer<typeof EnvSchema>

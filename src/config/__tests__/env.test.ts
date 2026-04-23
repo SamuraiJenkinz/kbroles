@@ -181,3 +181,56 @@ describe('env — Phase-5 Entra ID SSO (Plan 05-01 Task 1)', () => {
     ).toThrow(/Invalid env/)
   })
 })
+
+describe('env — Phase-5.1 BFF pivot (Plan 05.1-01 Task 1)', () => {
+  beforeEach(() => {
+    __resetEnvCacheForTests()
+  })
+
+  afterEach(() => {
+    __resetEnvCacheForTests()
+  })
+
+  it('accepts a custom SESSION_SECRET (>=32 chars)', () => {
+    const env = loadEnv({
+      ...REQUIRED_VARS,
+      SESSION_SECRET: 'x'.repeat(32),
+    } as unknown as NodeJS.ProcessEnv)
+    expect(env.SESSION_SECRET).toBe('x'.repeat(32))
+  })
+
+  it('defaults SESSION_SECRET to a string >=32 chars when unset (iron-session AES-256-GCM requirement)', () => {
+    const env = loadEnv(REQUIRED_VARS as unknown as NodeJS.ProcessEnv)
+    expect(env.SESSION_SECRET.length).toBeGreaterThanOrEqual(32)
+  })
+
+  it('rejects non-URL APP_BASE_URL', () => {
+    expect(() =>
+      loadEnv({ ...REQUIRED_VARS, APP_BASE_URL: 'not-a-url' } as unknown as NodeJS.ProcessEnv),
+    ).toThrow(/Invalid env/)
+  })
+
+  it('defaults APP_BASE_URL to http://localhost:3000 when unset', () => {
+    const env = loadEnv(REQUIRED_VARS as unknown as NodeJS.ProcessEnv)
+    expect(env.APP_BASE_URL).toBe('http://localhost:3000')
+  })
+
+  it('defaults AWS_SECRET_NAME to /mmc/cts/kb-assistant and AWS_REGION to us-east-1 when unset', () => {
+    const env = loadEnv(REQUIRED_VARS as unknown as NodeJS.ProcessEnv)
+    expect(env.AWS_SECRET_NAME).toBe('/mmc/cts/kb-assistant')
+    expect(env.AWS_REGION).toBe('us-east-1')
+  })
+
+  it('accepts a custom ENTRA_CLIENT_SECRET', () => {
+    const env = loadEnv({
+      ...REQUIRED_VARS,
+      ENTRA_CLIENT_SECRET: 'real-secret',
+    } as unknown as NodeJS.ProcessEnv)
+    expect(env.ENTRA_CLIENT_SECRET).toBe('real-secret')
+  })
+
+  it("defaults ENTRA_CLIENT_SECRET to 'dev-only-do-not-use-in-prod' when unset", () => {
+    const env = loadEnv(REQUIRED_VARS as unknown as NodeJS.ProcessEnv)
+    expect(env.ENTRA_CLIENT_SECRET).toBe('dev-only-do-not-use-in-prod')
+  })
+})
