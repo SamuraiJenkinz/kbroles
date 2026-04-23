@@ -35,7 +35,21 @@ const mocks = vi.hoisted(() => {
   const factory = typeof pinoFactory === 'function' ? pinoFactory : pinoFactory.default
   const logger = factory({ level: 'debug' }, stream)
   const streamAnswerMock = vi.fn()
-  return { capturedLines: lines as string[], logger, streamAnswerMock }
+  // Plan 05-03: override slot for getRequestUser return value. When null,
+  // the mocked module delegates to the real implementation (so the existing
+  // Phase-2 `process.env.NODE_ENV=production + no Authorization header →
+  // {error:'unauthorized'}` test keeps exercising the real code path). When
+  // set, the new Plan 05-03 discriminant tests inject {error:'token_expired'}
+  // / {error:'wrong_tenant'} without having to synth real JWTs — synthesis
+  // is covered by src/app/api/__tests__/_middleware.test.ts (Task 1).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const authOverride: { value: any } = { value: null }
+  return {
+    capturedLines: lines as string[],
+    logger,
+    streamAnswerMock,
+    authOverride,
+  }
 })
 
 vi.mock('@/llm/stream', () => ({
@@ -53,6 +67,23 @@ vi.mock('@/obs/logger', () => ({
   logger: mocks.logger,
   requestLogger: (fields: Record<string, unknown>) => mocks.logger.child(fields),
 }))
+
+// Plan 05-03: wrap the real _middleware module so override-less tests keep
+// exercising the real validator (dev-permissive path, prod-no-header path),
+// while the new discriminant tests can inject token_expired / wrong_tenant
+// by setting mocks.authOverride.value. vi.importActual is hoisted-safe.
+vi.mock('@/app/api/_middleware', async () => {
+  const actual = await vi.importActual<typeof import('@/app/api/_middleware')>(
+    '@/app/api/_middleware',
+  )
+  return {
+    ...actual,
+    getRequestUser: async (req: Request) => {
+      if (mocks.authOverride.value !== null) return mocks.authOverride.value
+      return actual.getRequestUser(req)
+    },
+  }
+})
 
 // --- Imports AFTER mocks (hoisting-safe) -------------------------------------
 import { POST } from '@/app/api/chat/route'
@@ -143,6 +174,9 @@ beforeEach(() => {
   resetSemaphore(20)
   clearCapturedLogs()
   mockStreamAnswer.mockReset()
+  // Plan 05-03: reset the auth override each test so accidental leakage
+  // between tests doesn't turn a happy-path run into a 401.
+  mocks.authOverride.value = null
 })
 
 afterEach(() => {
@@ -626,5 +660,104 @@ describe('POST /api/chat — client disconnect', () => {
     // Give the microtask queue a tick to drain.
     await new Promise(resolve => setTimeout(resolve, 10))
     expect(chatSemaphore.tryAcquire()).toBe(true)
+  })
+})
+
+// =============================================================================
+// PLAN 05-03: AUTH DISCRIMINANTS (token_expired / wrong_tenant / unauthorized)
+// =============================================================================
+//
+// These tests inject the three _middleware AuthResult error variants via the
+// authOverride hook defined in the vi.mock factory above. Real-JWT synthesis
+// is covered in src/app/api/__tests__/_middleware.test.ts (Task 1). Here we
+// only verify the ROUTE'S translation of each variant → HTTP status + JSON
+// body + structured log line.
+
+describe('POST /api/chat — Plan 05-03 auth discriminants', () => {
+  it('token_expired → 401 {error:"token_expired"} + X-Request-Id + log.warn with auth_result', async () => {
+    mocks.authOverride.value = { error: 'token_expired' }
+
+    const res = await POST(makePost(validBody()))
+
+    expect(res.status).toBe(401)
+    expect(res.headers.get('content-type')?.toLowerCase()).toContain('application/json')
+    expect(res.headers.get('x-request-id')).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    )
+    expect(((await res.json()) as { error: string }).error).toBe('token_expired')
+
+    // log.warn fired once; no terminal log.info (single-log-per-completed-
+    // request invariant: failed-auth paths land on warn, only successful
+    // streams emit the terminal info). Find the auth-fail log line.
+    const authLog = capturedLines
+      .map(line => JSON.parse(line) as Record<string, unknown>)
+      .find(entry => entry.msg === 'chat auth failed')
+    expect(authLog).toBeTruthy()
+    expect(authLog?.auth_result).toBe('token_expired')
+    expect(authLog?.ingress_status_code).toBe(401)
+    expect(authLog?.level).toBe(40) // pino warn level
+  })
+
+  it('wrong_tenant → 403 {error:"access_denied"} + X-Request-Id + log.warn with auth_result', async () => {
+    mocks.authOverride.value = { error: 'wrong_tenant' }
+
+    const res = await POST(makePost(validBody()))
+
+    expect(res.status).toBe(403)
+    expect(res.headers.get('content-type')?.toLowerCase()).toContain('application/json')
+    expect(res.headers.get('x-request-id')).toBeTruthy()
+    expect(((await res.json()) as { error: string }).error).toBe('access_denied')
+
+    const authLog = capturedLines
+      .map(line => JSON.parse(line) as Record<string, unknown>)
+      .find(entry => entry.msg === 'chat auth failed')
+    expect(authLog?.auth_result).toBe('wrong_tenant')
+    expect(authLog?.ingress_status_code).toBe(403)
+  })
+
+  it('unauthorized → 401 {error:"unauthorized"} + X-Request-Id + log.warn with auth_result', async () => {
+    mocks.authOverride.value = { error: 'unauthorized' }
+
+    const res = await POST(makePost(validBody()))
+
+    expect(res.status).toBe(401)
+    expect(((await res.json()) as { error: string }).error).toBe('unauthorized')
+
+    const authLog = capturedLines
+      .map(line => JSON.parse(line) as Record<string, unknown>)
+      .find(entry => entry.msg === 'chat auth failed')
+    expect(authLog?.auth_result).toBe('unauthorized')
+    expect(authLog?.ingress_status_code).toBe(401)
+  })
+
+  it('successful auth: terminal log.info includes auth_result:"success" + sub=oid', async () => {
+    mocks.authOverride.value = {
+      sub: 'entra-oid-abc-123',
+      tenantId: '11111111-2222-3333-4444-555555555555',
+      preferredUsername: 'alice@mmc.com',
+    }
+    mockStreamAnswer.mockResolvedValue({
+      response: {
+        can_answer: true,
+        answer: 'brief',
+        citations: [
+          { source_id: 'KB0022991', section_id: 'approvers', quote: 'Colleague Technology' },
+        ],
+      },
+      usage: { prompt_tokens: 10, completion_tokens: 5 },
+    })
+
+    const res = await POST(makePost(validBody()))
+    expect(res.status).toBe(200)
+    await readAllSseFrames(res)
+
+    const last = JSON.parse(capturedLines[capturedLines.length - 1]) as Record<string, unknown>
+    expect(last.msg).toBe('chat request completed')
+    expect(last.auth_result).toBe('success')
+    expect(last.sub).toBe('entra-oid-abc-123')
+    // preferred_username + tid deliberately NOT logged to minimise PII
+    // footprint. sub alone is enough for operator correlation.
+    expect(last.preferred_username).toBeUndefined()
+    expect(last.tenantId).toBeUndefined()
   })
 })
