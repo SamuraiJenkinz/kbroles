@@ -63,6 +63,7 @@ describe('ErrorCard — CHAT-07 error variants + X-Request-Id surfacing', () => 
     ['upstream_5xx', 'The knowledge service is temporarily unavailable.'],
     ['schema_reject_after_retry', 'We could not format the answer.'],
     ['internal', 'Something went wrong.'],
+    ['token_expired', 'Your session expired.'],
   ])('errorCode=%s renders distinct copy: %s', (errorCode, expectedText) => {
     render(<ErrorCard errorCode={errorCode} requestId="x" onRetry={vi.fn()} />)
     expect(screen.getByText(expectedText)).toBeInTheDocument()
@@ -73,5 +74,42 @@ describe('ErrorCard — CHAT-07 error variants + X-Request-Id surfacing', () => 
     render(<ErrorCard errorCode="internal" requestId="req-abc-123" onRetry={vi.fn()} />)
     await user.click(screen.getByRole('button', { name: /details/i }))
     expect(screen.getByText(/req-abc-123/)).toBeInTheDocument()
+  })
+
+  // ─── Phase-5 token_expired 9th ErrorCode (CONTEXT §Auth boundary) ──────────
+
+  describe('token_expired — Phase-5 9th code', () => {
+    it('renders title "Your session expired." (not the generic internal copy)', () => {
+      render(<ErrorCard errorCode="token_expired" requestId="req-tok" onRetry={vi.fn()} />)
+      expect(screen.getByText('Your session expired.')).toBeInTheDocument()
+      expect(screen.queryByText('Something went wrong.')).not.toBeInTheDocument()
+    })
+
+    it('primary button label reads "Sign back in" (not "Retry")', () => {
+      render(<ErrorCard errorCode="token_expired" requestId="req-tok" onRetry={vi.fn()} />)
+      expect(screen.getByRole('button', { name: /sign back in/i })).toBeInTheDocument()
+      // And crucially — the word "Retry" is NOT in the primary CTA for this
+      // code. Using queryAllByRole + name filter keeps us strict about this.
+      const retryButtons = screen.queryAllByRole('button', { name: /^retry$/i })
+      expect(retryButtons).toHaveLength(0)
+    })
+
+    it('sub-copy reads "Sign back in to continue — your question was not answered."', () => {
+      render(<ErrorCard errorCode="token_expired" requestId="req-tok" onRetry={vi.fn()} />)
+      expect(
+        screen.getByText(/sign back in to continue.+your question was not answered/i),
+      ).toBeInTheDocument()
+      // Standard "Your question wasn't answered." sub-copy MUST NOT appear for
+      // token_expired (would leak the non-auth wording through the branch).
+      expect(screen.queryByText(/your question wasn't answered/i)).not.toBeInTheDocument()
+    })
+
+    it('primary button click fires onRetry once (Plan 05-04 re-wires the call-site)', async () => {
+      const onRetry = vi.fn()
+      const user = userEvent.setup()
+      render(<ErrorCard errorCode="token_expired" requestId="req-tok" onRetry={onRetry} />)
+      await user.click(screen.getByRole('button', { name: /sign back in/i }))
+      expect(onRetry).toHaveBeenCalledTimes(1)
+    })
   })
 })
