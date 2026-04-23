@@ -1,62 +1,49 @@
 'use client'
-import { useIsAuthenticated, useMsal, useAccount } from '@azure/msal-react'
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useAuth } from './AuthProvider'
 import { useRolePersistence } from './useRolePersistence'
 import { RoleSelect } from './RoleSelect'
 import { ChatSurface } from './ChatSurface'
-import { acquireToken } from '@/auth/tokenProvider'
 
 /**
- * Auth gating is LAYERED on top of the existing role-persistence flow:
+ * Phase 5.1 — ChatPage gated on BFF useAuth() status.
  *
- * 1. MSAL still initialising (inProgress !== 'none')  → skeleton
- * 2. Unauthenticated + MSAL idle  → kick off acquireToken(null) to trigger
- *    the host-aware sign-in flow (browser redirect OR Teams popup); render
- *    skeleton while we wait.
- * 3. Authenticated + tenant claim NOT on allowlist  → router.replace to
- *    /access-denied (Plan 05-02 shipped the page).
- * 4. Authenticated + allowed tenant  → existing useRolePersistence flow
- *    (hydrated → RoleSelect → ChatSurface).
+ * State machine:
+ *   loading         → skeleton
+ *   unauthenticated → hard-navigate to /api/login (302 to Entra)
+ *   forbidden       → router.replace('/access-denied')
+ *   error           → (rare; render skeleton — /api/me will be retried on next mount)
+ *   authenticated   → existing role-persistence flow (RoleSelect → ChatSurface)
  *
- * Plan 05-04 Task 2.
+ * /api/login is a route handler that 302s to Entra, so unauthenticated
+ * redirect MUST be a top-level GET (window.location.href), not a Next.js
+ * router transition (which treats the URL as an internal page).
+ *
+ * No MSAL hooks, no tenant allowlist check (the backend /api/me enforces
+ * App Role membership; 403 → forbidden → /access-denied).
  */
-const ALLOWED_TENANT = process.env.NEXT_PUBLIC_ENTRA_TENANT_ID
-
 export function ChatPage() {
-  const isAuthenticated = useIsAuthenticated()
-  const { accounts, inProgress } = useMsal()
-  const account = useAccount(accounts[0] ?? undefined)
+  const { status } = useAuth()
   const router = useRouter()
   const { role, setRole, hydrated } = useRolePersistence()
 
-  // Wrong-tenant gate: authenticated but claims.tid not on allowlist.
   useEffect(() => {
-    const tid = account?.idTokenClaims?.tid
-    if (
-      isAuthenticated &&
-      tid &&
-      ALLOWED_TENANT &&
-      ALLOWED_TENANT !== 'dev-only-do-not-use-in-prod' &&
-      tid !== ALLOWED_TENANT
-    ) {
+    if (status === 'unauthenticated') {
+      window.location.href = '/api/login'
+    }
+    if (status === 'forbidden') {
       router.replace('/access-denied')
     }
-  }, [isAuthenticated, account, router])
+  }, [status, router])
 
-  // Unauth + MSAL idle: kick off sign-in. acquireToken handles host-aware
-  // interactive fallback (loginRedirect on browser, loginPopup on Teams).
-  useEffect(() => {
-    if (!isAuthenticated && inProgress === 'none') {
-      acquireToken(null).catch(() => {
-        // Silent-to-interactive threw; the user either saw a popup/redirect
-        // or something went wrong. Surfacing an error here is noisy — MSAL's
-        // events will land the user on /access-denied or re-render authed.
-      })
-    }
-  }, [isAuthenticated, inProgress])
-
-  if (inProgress !== 'none' || !isAuthenticated || !hydrated) {
+  if (
+    status === 'loading' ||
+    status === 'unauthenticated' ||
+    status === 'forbidden' ||
+    status === 'error' ||
+    !hydrated
+  ) {
     return (
       <main className="mx-auto flex min-h-screen max-w-3xl items-center justify-center p-6">
         <div className="h-24 w-full max-w-md animate-pulse rounded-xl bg-neutral-card shadow-sm" />
@@ -64,8 +51,7 @@ export function ChatPage() {
     )
   }
 
-  if (role == null) {
-    return <RoleSelect onPick={setRole} />
-  }
+  // status === 'authenticated' — render existing role flow.
+  if (role == null) return <RoleSelect onPick={setRole} />
   return <ChatSurface role={role} onChangeRole={() => setRole(null)} />
 }
