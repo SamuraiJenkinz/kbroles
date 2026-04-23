@@ -11,12 +11,12 @@ See: .planning/ROADMAP.md (6 phases, standard depth)
 
 ## Current Position
 
-Phase: 3 of 6 (Role Experience & Chat UI) — COMPLETE + VERIFIED
-Plan: 6 (e2e-success-criteria) — COMPLETE
-Status: Phase 3 complete + verified — verifier returned `human_needed` (5/5 programmatic SCs PASS; 2 UX items untestable in Playwright: typing-dots animation + hover-timestamp tooltip). User confirmed both via browser 2026-04-22; VERIFICATION.md status flipped to `passed`. 355 unit tests + 14 E2E = 369 total green. All 5 pitfalls (4, 13, 16, 17, 18) have dedicated coverage. Phase 4 UNBLOCKED.
-Last activity: 2026-04-22 — Phase 3 verification closed: human approved typing-dots animation + hover timestamp tooltip in real browser.
+Phase: 4 of 6 (Source Panel, Trust & Fallback UI) — In Progress
+Plan: 1 (source-exposure-and-badge-constants) — COMPLETE
+Status: Plan 04-01 complete. 410 unit tests green (355 pre-existing + 55 new). `pnpm typecheck` clean. SOURCE_BADGES canonical map, /api/sources, /api/config, CONTENT_STEWARD_EMAIL env, SNOW_FORM version dated. Plans 02–04 unblocked.
+Last activity: 2026-04-23 — Plan 04-01 complete. Commits: 2a54877 (feat badges+titles) / a8c503e (feat env+routes+version).
 
-Progress: [████████████████████████] Phase 1–3 of 6 complete; Phase 4 pending
+Progress: [█████████████████████████░░░░░░░] Phase 1–3 of 6 complete; Phase 4 Plan 1/4 complete
 
 ## Performance Metrics
 
@@ -163,6 +163,17 @@ Decisions are logged in PROJECT.md Key Decisions table. Load-bearing decisions a
 | 03-05 | onChangeRole() called inside handleConfirmChangeRole AFTER stop+clear | Pitfall 13 ordering owned in one function in ChatSurface rather than split across components. ChatPage's onChangeRole prop is a pure state setter with no stream knowledge. |
 | 03-05 | asstIdRef.current cleared in every terminal path | Prevents stale handleEvent dispatch after race conditions (stream resolves after clear/stop). |
 
+**Plan 04-01 decisions (source-exposure-and-badge-constants):**
+
+| Plan  | Decision | Rationale |
+|-------|----------|-----------|
+| 04-01 | Badge labels use exact REGISTRY section titles (e.g. 'Knowledge Blocks (Knowledge Team Only)') | Registry parity test asserts badge.label === section.title; abbreviated forms would fail CI |
+| 04-01 | KB0020882/attachments stays blue (source-level), not purple | RESEARCH §78 confirms handover §14 'Attachments purple' refers to SNOW_FORM fields, not KB0020882 |
+| 04-01 | KB0020882/categorisation → amber/Tags (section-level override) | Handover §14 explicitly assigns 'Categories amber' as section-level group |
+| 04-01 | SNOW_FORM version changed from 'live' to '2026-04-23' | TRST-01 freshness line 'Form schema YYYY-MM-DD' requires a parseable date string |
+| 04-01 | /api/config test mocks env() via vi.mock('@/config/env') | Route calls env() which validates LLM_* vars absent from test env; mock returns controlled Env object |
+| 04-01 | sourceTitles.ts Phase-3 legacy keys preserved | UTIL-01 tests reference 'resolution', 'form-fields' etc; removing would break 7 existing tests |
+
 **Plan 03-06 decisions (e2e-success-criteria):**
 
 | Plan  | Decision | Rationale |
@@ -258,10 +269,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-23 — Phase 3 Wave 4 (Plan 06) complete. Commits: b04eae5 (test fixtures+SC#1+SC#2) / 5bd69f4 (test SC#3/SC#4/SC#5+Pitfall13/17). 369 total tests green (355 unit + 14 E2E). SUMMARY at .planning/phases/03-role-experience-and-chat-ui/03-06-SUMMARY.md. Phase 3 COMPLETE.
-Stopped at: Phase 3 complete. Phase 4 unblocked.
+Last session: 2026-04-23 — Plan 04-01 complete. Commits: 2a54877 (feat badges+titles) / a8c503e (feat env+routes+version) + pending docs metadata. 410 total unit tests green. SUMMARY at .planning/phases/04-source-panel-trust-and-fallback-ui/04-01-SUMMARY.md.
+Stopped at: Phase 4 Plan 1 complete.
 Resume signals (next session):
-  - Phase 4 — Source Pane & Distinct Fallback UI
+  - Phase 4 Plan 2 — source-panel-and-chip-integration
 Resume file: None
 
 **Deferred work tracked for v1.1 (post-Phase 2):**
