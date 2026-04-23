@@ -1,10 +1,10 @@
 # Env-Handling Contract
 
-**Status:** Phase 2 Plan 01 (infra-ops-setup). Consolidates the env-file and Application-Settings handling across every runtime this repo spawns.
+**Status:** Phase 2 Plan 01 (infra-ops-setup); §5 rewritten Phase 5.1 (MMC-IT BFF pivot — AWS Secrets Manager replaces the superseded Phase-5 hosting plan).
 
 **Why this doc exists:** Phase 1 Plan 05 decision #3 surfaced that `tsx` and Next.js load env vars differently, and `NODE_EXTRA_CA_CERTS` has a Node-level ordering constraint that no `.env` can satisfy. STATE.md Phase 2 entry gate ("Expand .env handling docs before Phase 2 plan") — closed by this document.
 
-**Scope:** the four runtimes this repo spawns today (`next dev`, `next start`, `vitest run`, `pnpm smoke`) plus forward-reference entries for App Service Application Settings (Phase 5) and MSAL client secret (Phase 5).
+**Scope:** the four runtimes this repo spawns today (`next dev`, `next start`, `vitest run`, `pnpm smoke`) plus the Phase 5.1 production pattern (AWS Secrets Manager → `loadSecrets()` → `process.env`).
 
 ---
 
@@ -14,7 +14,7 @@
 |---|---|---|---|
 | `.env.local` | NO (gitignored) | Next.js (dev + start), `pnpm smoke` via `node --env-file-if-exists` | Local-developer secrets (OpenAI key in dev mode; MGTI key when access lands) |
 | `.env.development` | optional (usually committed) | `next dev` | Shared non-secret dev defaults (none today; placeholder for future) |
-| `.env.production` | optional (usually committed) | `next start` / App Service build artefact | Non-secret prod defaults baked at build time |
+| `.env.production` | optional (usually committed) | `next start` | Non-secret prod defaults baked at build time |
 | `.env` | NO (gitignored if used at all) | Next.js (all modes, lowest precedence) | Fallback; we deliberately do not use it — every secret must be explicit |
 | (none) | — | `vitest run` | **Vitest does NOT auto-load any `.env` file** — see §2 row 3 |
 
@@ -26,10 +26,10 @@
 
 ## 2. Per-Runtime Cheat Sheet
 
-| Runtime | Env file auto-loaded | Wrapping flag / script | App Service source |
+| Runtime | Env file auto-loaded | Wrapping flag / script | Production source |
 |---|---|---|---|
 | `next dev` | `.env.local` + `.env.development` (+ `.env.development.local` if present) | none — framework does it | n/a (dev only) |
-| `next start` | `.env.local` + `.env.production` | none — framework does it | Application Settings injected as `process.env` by Azure at container start (Phase 5) |
+| `next start` | `.env.local` + `.env.production` | none — framework does it | Windows Scheduled Task inherits machine-scope env vars; `loadSecrets()` pulls `/mmc/cts/kb-assistant` from AWS Secrets Manager onto `process.env` at cold start (Phase 5.1 — see §5) |
 | `vitest run` | **nothing** — Vitest does not auto-load `.env` files | Set vars in shell before running, or use `vi.stubEnv('KEY', 'value')` / `vi.unstubAllEnvs()` inside the test file | n/a (CI loads from repo secrets or shell env) |
 | `pnpm smoke` | `.env.local` (via Node's `--env-file-if-exists`) | `node --env-file-if-exists=.env.local --import tsx scripts/phase0-smoke.ts` — captured in `package.json` `smoke` script | n/a (operator-run; uses shell env for NODE_EXTRA_CA_CERTS) |
 
@@ -45,7 +45,7 @@ The only unit test that currently touches env is `src/config/__tests__/env.test.
 
 ## 3. Secrets That MUST Live Outside .env Files
 
-These values CANNOT be placed in any `.env` file and still work. They must be set in the shell environment (local dev), Application Settings (App Service), or CI secrets (GitHub Actions).
+These values CANNOT be placed in any `.env` file and still work. They must be set in the shell environment (local dev), as machine-scope env vars on the Windows Server (Phase 5.1 — see `docs/deploy-windows.md` Step 4.2), or as CI secrets (GitHub Actions).
 
 ### `NODE_EXTRA_CA_CERTS`
 
@@ -53,15 +53,15 @@ These values CANNOT be placed in any `.env` file and still work. They must be se
 - **Why not .env:** Node reads `NODE_EXTRA_CA_CERTS` at **TLS init**, which happens before any dotenv-style loader runs. By the time `next dev` or `--env-file-if-exists` parses a `.env` file, the TLS stack is already configured without the cert bundle. See [nodejs/node issue #51426](https://github.com/nodejs/node/issues/51426).
 - **Local dev:** export in your shell (`export NODE_EXTRA_CA_CERTS=/absolute/path/to/mmc-ca.pem`) or in your shell rc file.
 - **Windows dev:** `setx NODE_EXTRA_CA_CERTS "C:\path\to\mmc-ca.pem"` at the user level, or prepend inline: `NODE_EXTRA_CA_CERTS=C:\path\to\mmc-ca.pem pnpm smoke -- --mode=prod` in bash / `$env:NODE_EXTRA_CA_CERTS="..."; pnpm smoke -- --mode=prod` in PowerShell.
-- **App Service:** set as an Application Setting in the Azure portal or via bicep — Azure injects it as an env var before Node starts, so it's present at TLS init.
+- **Production (Windows Server — Phase 5.1):** set as a machine-scope env var (`[System.Environment]::SetEnvironmentVariable('NODE_EXTRA_CA_CERTS', 'C:\path\to\mmc-ca.pem', 'Machine')`) — the Windows Scheduled Task inherits machine-scope env at start, which is before Node's TLS init. See `docs/deploy-windows.md` Step 4.2.
 - **Verification:** `pnpm smoke -- --mode=prod` passes Smoke 5 without `UNABLE_TO_VERIFY_LEAF_SIGNATURE`.
 
-### MSAL client secret — **Phase 5 addition**
+### MSAL confidential-client secret + `SESSION_SECRET` — **Phase 5.1 addition (replaces the superseded Phase-5 secrets plan)**
 
-- **Purpose:** confidential-client secret for Entra app registration when server-side token exchange is needed (AUTH-01).
-- **Why not .env:** secrets in committed or half-committed files leak via misconfigured `.gitignore`. Keep secrets in Azure Key Vault referenced from Application Settings.
-- **Local dev:** not applicable in Phase 2 — the stub middleware (`src/app/api/_middleware.ts`) accepts any caller in dev.
-- **App Service:** Key Vault reference in Application Settings (`@Microsoft.KeyVault(SecretUri=...)` syntax). Phase 5 planning doc will pin the vault name and secret name.
+- **Purpose:** `ENTRA_CLIENT_SECRET` is the confidential-client secret for the Entra app registration used by `src/auth/msalClient.ts` (server-side auth code flow — AUTH-01). `SESSION_SECRET` is the 32+ char AES key iron-session uses to seal the `kb_session` cookie.
+- **Why not .env (production):** secrets in committed or half-committed files leak via misconfigured `.gitignore`. Phase 5.1 centralises both into AWS Secrets Manager at `/mmc/cts/kb-assistant` (us-east-1), retrieved via the AWS SDK default credential chain at app startup. See §5.
+- **Local dev:** `.env.local` with any placeholder values is sufficient — the stub values never leave your laptop and the auth flow is exercised end-to-end against the real Entra tenant only on the on-prem Windows box.
+- **Production (Windows Server):** `loadSecrets()` (`src/config/secrets.ts`) fetches the JSON blob from AWS Secrets Manager on first call, writes each key onto `process.env` if not already set (dev wins), and caches the result module-level. See §5 + `docs/deploy-windows.md` Step 2.
 
 ---
 
@@ -80,7 +80,7 @@ LLM_AUTH_MODE=bearer
 LLM_BASE_URL=https://api.openai.com/v1
 
 # API key. Dev → OpenAI personal key. Prod → MGTI-issued key (not in any .env;
-# fed via App Service Application Settings in prod).
+# fed via AWS Secrets Manager → loadSecrets() in prod — see §5).
 LLM_API_KEY=sk-...
 
 # Model / deployment name. Dev → 'gpt-4o-2024-08-06'. Prod → MGTI gpt-4o deployment
@@ -115,23 +115,58 @@ STRICT_SCHEMA_SUPPORTED=true
 
 ---
 
-## 5. App Service Application Settings Mapping — **Phase 5 work, captured for forward reference**
+## 5. Phase 5.1 — AWS Secrets Manager + `loadSecrets()` cascade
 
-When Phase 5 deploys the App Service, each `env.ts`-validated variable is set as an Azure **Application Setting**. Azure injects Application Settings as environment variables into the Node process at container start, which is early enough for both dotenv-less runtimes and `NODE_EXTRA_CA_CERTS`.
+Production env in this project is SERVER-SIDE ONLY. There are no `NEXT_PUBLIC_*` vars in use as of Phase 5.1 (the Phase-5 SPA/NAA registration that needed them is superseded — see `.planning/phases/05.1-mmc-it-bff-pivot-xmcp-pattern/05.1-RESEARCH.md`). The runtime cascade:
 
-| App Setting key | Value source | Notes |
-|---|---|---|
-| `LLM_AUTH_MODE` | literal `api-key` | prod always MGTI |
-| `LLM_BASE_URL` | literal (confirmed suffix from Smoke 1) | |
-| `LLM_API_KEY` | Key Vault reference | `@Microsoft.KeyVault(...)` syntax |
-| `LLM_MODEL` | literal (MGTI gpt-4o deployment name) | |
-| `STRICT_SCHEMA_SUPPORTED` | `true` or `false` depending on Smoke 2 prod result | |
-| `NODE_EXTRA_CA_CERTS` | path to MMC CA bundle mounted into the App Service file system (`/home/site/certs/mmc-ca.pem` — exact path pinned in Phase 5 bicep) | App Service mounts persistent files under `/home/site`; cert bundle is uploaded at deploy time |
-| `MAX_INFLIGHT_STREAMS` | `20` (override during pilot if telemetry dictates) | |
-| `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_API_AUDIENCE` | literals for prod tenant | Phase 5 MSAL wiring |
-| MSAL client secret (name TBD) | Key Vault reference | Phase 5 addition |
+1. **AWS Secrets Manager** at `/mmc/cts/kb-assistant` (region `us-east-1`) — the authoritative source for secrets in production. JSON blob:
+   ```json
+   {
+     "SESSION_SECRET": "<64-char-random — iron-session AES key>",
+     "ENTRA_CLIENT_ID": "<app-registration-client-id>",
+     "ENTRA_TENANT_ID": "<mmc-tenant-guid>",
+     "ENTRA_CLIENT_SECRET": "<app-registration-client-secret>",
+     "LLM_API_KEY": "<mgti-api-key>",
+     "LLM_BASE_URL": "<mgti-endpoint>"
+   }
+   ```
+2. **`loadSecrets()`** (`src/config/secrets.ts`) fetches this blob on first call, writes each key onto `process.env` IF not already set (dev overrides always win), and caches the result module-level. Subsequent calls are free — the AWS SDK is only hit once per process lifetime. Falls through silently with a single `info` log line if AWS is unreachable (local-dev mode).
+3. **`env()`** (`src/config/env.ts`) validates the final `process.env` against the zod schema and returns the typed env object. Route handlers that need secrets call `await loadSecrets()` before `env()` fires (or once at app start via `instrumentation.ts`).
 
-**Bicep template location:** Phase 5 will add `infra/main.bicep` that renders the above table into `siteConfig.appSettings[]`. A placeholder sample is deliberately not authored in Phase 2 to keep prod secrets out of the repo until Phase 5 ownership is clear.
+**Local dev:** create `.env.local` at the repo root. Values in `.env.local` take precedence over AWS (dev wins — `loadSecrets()` only writes missing keys). Local dev does NOT need AWS credentials — `loadSecrets()` catches unreachable-AWS errors and logs a single `info` line. Example:
+
+```bash
+# .env.local — git-ignored
+LLM_AUTH_MODE=bearer
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_API_KEY=sk-...
+LLM_MODEL=gpt-4o
+SESSION_SECRET=local-dev-secret-at-least-32-chars-long
+ENTRA_CLIENT_ID=dev-only-not-a-real-client-id
+ENTRA_TENANT_ID=dev-only-not-a-real-tenant-id
+ENTRA_CLIENT_SECRET=dev-only-not-a-real-secret
+APP_BASE_URL=http://localhost:3000
+```
+
+**Production (Windows Server):**
+- AWS credentials reach the Scheduled Task's user context via `%USERPROFILE%\.aws\credentials` OR machine-scope `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` env vars. See `docs/deploy-windows.md` Step 2 for verification.
+- Non-secret runtime config (`NODE_ENV`, `PORT`, `HOSTNAME`, `APP_BASE_URL`, `AWS_SECRET_NAME`, `AWS_REGION`) is set as machine-scope env vars; Scheduled Task inherits. See `docs/deploy-windows.md` Step 4.2.
+- At process start, `loadSecrets()` pulls the JSON blob from `/mmc/cts/kb-assistant` and populates the remaining `process.env` keys.
+
+**Secret rotation:** update the JSON blob in AWS Secrets Manager (`aws secretsmanager update-secret --secret-id /mmc/cts/kb-assistant --region us-east-1 --secret-string <new-json>`) and restart the Scheduled Task (`schtasks /end /tn KbAssistant` → `schtasks /run /tn KbAssistant`). The module-level cache in `loadSecrets()` only resets on process start — restart is the rotation mechanism. See `docs/entra-app-registration-setup.md` Rotation section for the client-secret-specific walk-through.
+
+**What's at this location at runtime** (for debugging a wedged deploy):
+
+| Env key | Source (prod) | Source (dev) | Consumed by |
+|---|---|---|---|
+| `SESSION_SECRET` | AWS Secrets Manager | `.env.local` | `src/auth/session.ts` (iron-session seal) |
+| `ENTRA_CLIENT_ID` | AWS Secrets Manager | `.env.local` | `src/auth/msalClient.ts` (CCA) |
+| `ENTRA_TENANT_ID` | AWS Secrets Manager | `.env.local` | `src/auth/msalClient.ts` (authority URL) |
+| `ENTRA_CLIENT_SECRET` | AWS Secrets Manager | `.env.local` | `src/auth/msalClient.ts` (CCA) |
+| `APP_BASE_URL` | machine-scope env | `.env.local` | `/api/login` + `/api/auth/callback` (redirect URI) |
+| `LLM_API_KEY` | AWS Secrets Manager | `.env.local` | `src/llm/client.ts` |
+| `LLM_BASE_URL` | AWS Secrets Manager | `.env.local` | `src/llm/client.ts` |
+| `NODE_EXTRA_CA_CERTS` | machine-scope env (set before the Scheduled Task starts) | shell (see §3) | Node.js TLS init (pre-dotenv) |
 
 ---
 
@@ -179,4 +214,4 @@ Three of the five Phase-0 smokes exercise the env layer:
 - Smoke 5 (corporate CA) depends on `NODE_EXTRA_CA_CERTS` set at the shell level.
 - Smoke 2 (strict JSON schema) depends on `STRICT_SCHEMA_SUPPORTED` being read as a typed enum, not a raw string (see `src/config/env.ts` lines 8–14 for the rationale comment).
 
-Getting env handling wrong in any of these breaks the prod-mode smoke gate, which in turn blocks Plan 04 Task 2 (`/api/chat` route code). This document is the single source for re-orienting when a future "it works locally but fails in CI / App Service" incident happens.
+Getting env handling wrong in any of these breaks the prod-mode smoke gate, which in turn blocks Plan 04 Task 2 (`/api/chat` route code). This document is the single source for re-orienting when a future "it works locally but fails in CI / on the Windows box" incident happens.

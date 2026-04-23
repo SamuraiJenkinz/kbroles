@@ -139,7 +139,7 @@ Plans:
 
 **Depends on**: Phase 3 (UI must exist for auth to wrap), parallelisable with Phase 4
 
-**Requirements**: AUTH-01, AUTH-03, DELV-01, DELV-02, DELV-03, DELV-04
+**Requirements**: AUTH-01, AUTH-03 (deferred to v1.1), DELV-01 (reassigned to on-prem Windows — Phase 5.1), DELV-02, DELV-03 (deferred to v1.1), DELV-04
 
 **Success Criteria** (what must be TRUE):
   1. An MMC colleague visiting the standalone MMC corporate URL is redirected to Entra ID, signs in with SSO, and lands on the role-select screen; a non-MMC tenant token is blocked at the auth middleware (tenant allowlist)
@@ -161,26 +161,40 @@ Plans:
 
 ---
 
+**Pivot note (2026-04-23):** Phase 5 as originally scoped (SPA + NAA + Azure App Service) is superseded by Phase 5.1 below. The Phase 5 plans 05-01 through 05-05 built a working SPA+NAA system; Phase 5.1 replaces that with the MMC-IT-blessed BFF pattern (server-side Entra auth code flow, iron-session cookie, on-prem Windows deploy). Requirements AUTH-03 (Teams SSO) and DELV-03 (Teams manifest) are deferred to v1.1 — a Phase 6.1 Teams-tab candidate is mentioned in RESEARCH but is NOT on the v1 roadmap (separate user decision).
+
 ### Phase 5.1: MMC-IT BFF pivot (xmcp pattern) (INSERTED)
 
-**Goal:** Replace Phase 5's SPA+NAA browser auth with the MMC-IT-blessed BFF pattern — server-side Entra auth code flow (@azure/msal-node), iron-session HttpOnly cookie, App Role gating (KbAssistant.User), /api/me BFF contract — and ship a working deploy path to the on-prem Windows Server box (IIS reverse proxy + Windows Scheduled Task + AWS Secrets Manager) with a user-executable Entra App Registration setup doc as the handoff artifact.
+**Goal:** Replace Phase 5's SPA+NAA browser auth with the MMC-IT-blessed BFF pattern — server-side Entra auth code flow (`@azure/msal-node`), iron-session HttpOnly cookie, App Role gating (`KbAssistant.User`), `/api/me` BFF contract — and ship a working deploy path to the on-prem Windows Server box (IIS reverse proxy + Windows Scheduled Task + AWS Secrets Manager) with a user-executable Entra App Registration setup doc as the handoff artifact.
 
-**Depends on:** Phase 5
+**Depends on:** Phase 5 (Phase 5's 05-01 through 05-05 plans complete; this phase pivots their output)
+
+**Requirements addressed:** AUTH-01, DELV-01 (on-prem Windows — reassigned from Azure App Service), DELV-02, DELV-04
+**Requirements deferred to v1.1:** AUTH-03 (Teams SSO), DELV-03 (Teams manifest)
+
+**Success Criteria** (what must be TRUE):
+  1. An MMC colleague with `KbAssistant.User` App Role assignment visits `https://<windows-host>` and is redirected to Entra ID, signs in, and lands on the role-select screen — session established via iron-session HttpOnly cookie.
+  2. A user without the `KbAssistant.User` role is redirected to `/access-denied` with role-missing copy (not tenant-wrong copy).
+  3. `/api/chat` returns 401 `{error:'token_expired'}` on session expiry (client ErrorCard "Sign back in" button redirects to `/api/login`), 403 `{error:'access_denied'}` on forbidden role, 401 `{error:'unauthorized'}` on no session.
+  4. The app deploys to the on-prem Windows Server box via GitHub Actions self-hosted runner; the Windows Scheduled Task `KbAssistant` runs `node.exe server.js`; IIS reverse proxy terminates TLS and forwards to 127.0.0.1:3001 with SSE-safe settings (`responseBufferLimit=0`, `X-Accel-Buffering:no`).
+  5. The user can complete the Entra App Registration setup end-to-end by following `docs/entra-app-registration-setup.md` without back-and-forth; secrets land in AWS Secrets Manager at `/mmc/cts/kb-assistant` and the deployed app reads them via the AWS SDK credential chain.
+
+**Pitfall focus**: Pitfall 1 (runtime:'nodejs' mandatory on auth routes), Pitfall 3 (single-instance msal-node PKCE state — load-bearing pilot decision), Pitfall 4 (redirect URI exact match — AADSTS50011 guard), Pitfall 5 (roles claim undefined-vs-empty), Pitfall 6 (IIS SSE buffering), Pitfall 8 (Playwright can't seal iron-session cookie — route-mock /api/me instead), Pitfall 9 (NEXT_PUBLIC_ENTRA_* dead-code removal), Pitfall 10 (Next.js 15 async cookies()), Pitfall 11 (msal-node CCA singleton).
 
 **Plans:** 8 plans
 
 Plans:
-- [ ] 05.1-01-deps-env-secrets-foundation-PLAN.md — Install @azure/msal-node + iron-session + @aws-sdk/client-secrets-manager; add SESSION_SECRET/ENTRA_CLIENT_SECRET/APP_BASE_URL/AWS_* env fields; loadSecrets() module with AWS-first / env-fallback / module cache
-- [ ] 05.1-02-server-auth-library-msalclient-session-PLAN.md — msalClient.ts singleton (ConfidentialClientApplication) + session.ts iron-session wrappers (getSessionOptions/getSession/saveSession/clearSession)
-- [ ] 05.1-03-auth-route-handlers-PLAN.md — /api/login + /api/auth/callback + /api/logout + /api/me route handlers (runtime:'nodejs'; xmcp-matching shapes) with ~15 unit tests
-- [ ] 05.1-04-middleware-chat-route-access-denied-PLAN.md — Swap _middleware.ts from jose JWT to iron-session cookie; chat route forbidden (was wrong_tenant) discriminant; access-denied copy reflects role-failure
-- [ ] 05.1-05-frontend-bff-authprovider-rewire-PLAN.md — Replace MsalProvider with BFF AuthProvider (fetch /api/me); ChatPage via useAuth; strip Bearer attach from useChatStream (credentials:include); sign-out via /api/logout + window reload
-- [ ] 05.1-06-surgical-removal-deps-fixture-PLAN.md — Delete dead @azure/msal-browser/@azure/msal-react/@microsoft/teams-js/jose/mock-jwks; delete src/auth/{detectHost,msalConfig,msalInstance,tokenProvider}.ts + redirect bridge + teams/; rename mockMsal.ts → mockSession.ts (Pitfall 8); strip NEXT_PUBLIC_ENTRA_*
-- [ ] 05.1-07-deploy-workflow-windows-runner-PLAN.md — Rewrite .github/workflows/deploy.yml for self-hosted Windows runner + Windows Scheduled Task (NOT NSSM) + /api/health canary + auto-rollback; rename AZURE_WEBAPP_HOSTNAME → APP_HOSTNAME in remote smoke spec
-- [ ] 05.1-08-operator-docs-entra-windows-roadmap-PLAN.md — docs/entra-app-registration-setup.md + docs/deploy-windows.md + env-handling.md AWS Secrets Manager update + ROADMAP.md AUTH-03/DELV-03 deferral annotations
+- [x] 05.1-01-deps-env-secrets-foundation-PLAN.md — Install @azure/msal-node + iron-session + @aws-sdk/client-secrets-manager; add SESSION_SECRET/ENTRA_CLIENT_SECRET/APP_BASE_URL/AWS_* env fields; loadSecrets() module with AWS-first / env-fallback / module cache (complete 2026-04-23)
+- [x] 05.1-02-server-auth-library-msalclient-session-PLAN.md — msalClient.ts singleton (ConfidentialClientApplication) + session.ts iron-session wrappers (getSessionOptions/getSession/saveSession/clearSession) (complete 2026-04-23)
+- [x] 05.1-03-auth-route-handlers-PLAN.md — /api/login + /api/auth/callback + /api/logout + /api/me route handlers (runtime:'nodejs'; xmcp-matching shapes) with ~15 unit tests (complete 2026-04-23)
+- [x] 05.1-04-middleware-chat-route-access-denied-PLAN.md — Swap _middleware.ts from jose JWT to iron-session cookie; chat route forbidden (was wrong_tenant) discriminant; access-denied copy reflects role-failure (complete 2026-04-23)
+- [x] 05.1-05-frontend-bff-authprovider-rewire-PLAN.md — Replace MsalProvider with BFF AuthProvider (fetch /api/me); ChatPage via useAuth; strip Bearer attach from useChatStream (credentials:include); sign-out via /api/logout + window reload (complete 2026-04-23)
+- [x] 05.1-06-surgical-removal-deps-fixture-PLAN.md — Delete dead @azure/msal-browser/@azure/msal-react/@microsoft/teams-js/jose/mock-jwks; delete src/auth/{detectHost,msalConfig,msalInstance,tokenProvider}.ts + redirect bridge + teams/; rename mockMsal.ts → mockSession.ts (Pitfall 8); strip NEXT_PUBLIC_ENTRA_* (complete 2026-04-23)
+- [x] 05.1-07-deploy-workflow-windows-runner-PLAN.md — Rewrite .github/workflows/deploy.yml for self-hosted Windows runner + Windows Scheduled Task + /api/health canary + auto-rollback; rename AZURE_WEBAPP_HOSTNAME → APP_HOSTNAME in remote smoke spec (complete 2026-04-23)
+- [x] 05.1-08-operator-docs-entra-windows-roadmap-PLAN.md — docs/entra-app-registration-setup.md + docs/deploy-windows.md + env-handling.md AWS Secrets Manager update + ROADMAP.md AUTH-03/DELV-03 deferral annotations (complete 2026-04-23)
 
 **Details:**
-Full research at `.planning/phases/05.1-mmc-it-bff-pivot-xmcp-pattern/05.1-RESEARCH.md`. Translates xmcp (Atlas Exchange Infrastructure) auth pattern from Python/Flask to Node/Next. Single-instance pilot (module-level msal-node CCA + iron-session stateless cookie — distributed state deferred to v1.1 follow-up if scales). AUTH-03 (Teams SSO) + DELV-03 (Teams manifest) deferred to v1.1 per RESEARCH + planning context. Pitfall focus: 1 (runtime:'nodejs' mandatory on auth routes), 3 (single-instance msal-node PKCE), 4 (redirect URI exact match — AADSTS50011), 5 (roles claim undefined-vs-empty), 6 (IIS SSE buffering), 8 (Playwright route-mock /api/me), 9 (NEXT_PUBLIC_ENTRA_* dead-code removal), 10 (Next.js 15 async cookies()), 11 (msal-node CCA singleton).
+Full research at `.planning/phases/05.1-mmc-it-bff-pivot-xmcp-pattern/05.1-RESEARCH.md`. Translates xmcp (Atlas Exchange Infrastructure) auth pattern from Python/Flask to Node/Next. Single-instance pilot (module-level msal-node CCA + iron-session stateless cookie — distributed state deferred to v1.1 follow-up if scales). AUTH-03 (Teams SSO) + DELV-03 (Teams manifest) deferred to v1.1 per RESEARCH + planning context.
 
 ---
 
@@ -217,7 +231,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 5.1 → 6
 | 3. Role Experience & Chat UI | 6/6 | Complete | 2026-04-22 |
 | 4. Source Panel, Trust & Fallback UI | 4/4 | Complete | 2026-04-23 |
 | 5. SSO & Teams Delivery | 4/5 | Paused (pivoted to 5.1) | 2026-04-23 |
-| 5.1 MMC-IT BFF pivot (xmcp pattern) | 0/8 | Not started | - |
+| 5.1 MMC-IT BFF pivot | 8/8 | Complete | 2026-04-23 |
 | 6. Telemetry, Evals & Pilot Hardening | 0/TBD | Not started | - |
 
 ---
