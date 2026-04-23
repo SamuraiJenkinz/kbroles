@@ -1,95 +1,86 @@
 /**
- * Phase-5 Entra ID JWT validator. Replaces the Phase-2 stub documented at
- * the top of this file previously. The Phase-2 PHASE 5 REPLACEMENT POINT
- * block described the four steps (a)-(d); this implementation fulfils them
- * plus adds token_expired / wrong_tenant discriminants for ErrorCard copy
- * + /access-denied routing (CONTEXT §Blocked-user UX, Plan 05-03).
+ * Phase-5.1 BFF session-cookie auth validator. REPLACES the Phase-5
+ * jose+JWKS JWT validator; now returns an authenticated user based on the
+ * iron-session cookie established at /api/auth/callback.
  *
- * Dev/test permissive stub preserved: when NODE_ENV !== 'production' AND
- * there is no Authorization header, accept any caller as 'local-dev'. This
- * keeps Phase 2/3/4 route tests working without JWT stubbing.
+ * Wire contract preserved:
+ *   - unauthorized     → HTTP 401 { error: 'unauthorized' }
+ *   - forbidden        → HTTP 403 { error: 'access_denied' }   (replaces wrong_tenant)
+ *   - session_expired  → HTTP 401 { error: 'token_expired' }   (wire code unchanged so
+ *                        frontend ErrorCard + useChatStream + 30+ assertions don't break)
  *
- * Module name intentionally starts with underscore so Next.js 16 does NOT
- * auto-register it as a route (same invariant as the Phase-2 stub).
+ * Dev/test permissive stub preserved: NODE_ENV !== 'production' AND no
+ * session cookie → synthetic local-dev user with the required role. Phase
+ * 2/3/4 route tests + local `pnpm dev` depend on this.
+ *
+ * Module name intentionally starts with underscore so Next.js does NOT
+ * auto-register it as a route (Phase-2 invariant preserved).
+ *
+ * Phase 5.1 — Plan 04 Task 1.
  */
-import { createRemoteJWKSet, jwtVerify, errors as joseErrors } from 'jose'
-import { env } from '@/config/env'
+import { cookies } from 'next/headers'
+import { getSession, SESSION_COOKIE_NAME } from '@/auth/session'
+
+const REQUIRED_ROLE = 'KbAssistant.User'
 
 export type AuthResult =
-  | { sub: string; tenantId: string; preferredUsername?: string }
+  | { sub: string; email: string; roles: string[] }
   | { error: 'unauthorized' }
-  | { error: 'token_expired' }
-  | { error: 'wrong_tenant' }
+  | { error: 'forbidden'; upn: string }
+  | { error: 'session_expired' }
 
-// JWKS is tenant-scoped in Entra v2. Cached module-level so concurrent
-// requests share one in-memory cache. cooldownDuration prevents thundering-
-// herd on key rotation; cacheMaxAge is 24h — Entra rotates rarely and
-// JWKS supports multiple kids simultaneously during rotation.
-let _jwks: ReturnType<typeof createRemoteJWKSet> | null = null
+export async function getRequestUser(_request: Request): Promise<AuthResult> {
+  const cookieStore = await cookies()
 
-function getJwks(): ReturnType<typeof createRemoteJWKSet> {
-  if (_jwks) return _jwks
-  const tid = env().ENTRA_TENANT_ID
-  _jwks = createRemoteJWKSet(
-    new URL(`https://login.microsoftonline.com/${tid}/discovery/v2.0/keys`),
-    { cooldownDuration: 300_000, cacheMaxAge: 86_400_000 },
-  )
-  return _jwks
-}
-
-/** Test-only. Forces a fresh JWKS on next call — required by the mock-jwks
- * test pattern so each test's stubbed tenant GUID re-bootstraps the cache. */
-export function __resetJwksForTests(): void {
-  _jwks = null
-}
-
-export async function getRequestUser(request: Request): Promise<AuthResult> {
-  // Dev/test permissive stub: no Authorization header AND non-production →
-  // local-dev user. Production MUST have a Bearer token; the stub never
-  // applies there (the NODE_ENV gate comes first).
-  const auth = request.headers.get('authorization')
-  if (process.env.NODE_ENV !== 'production' && !auth) {
-    return { sub: 'local-dev', tenantId: 'local-dev' }
+  // Dev/test permissive stub: non-production + no session cookie → local dev
+  // user. Matches Phase-5's stub shape (local-dev subject) with the required
+  // App Role pre-filled so role-gated code paths light up. Preserves Phase
+  // 2/3/4 route tests that run without an authenticated session.
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    !cookieStore.get(SESSION_COOKIE_NAME)
+  ) {
+    return {
+      sub: 'local-dev',
+      email: 'local@dev',
+      roles: [REQUIRED_ROLE],
+    }
   }
 
-  if (!auth || !auth.toLowerCase().startsWith('bearer ')) {
+  // Real path: read the session. iron-session decrypt failures (tampered,
+  // wrong secret, expired cookie) produce an empty session object — treat
+  // as unauthorized. iron-session also auto-expires based on the maxAge
+  // set in getSessionOptions(); when the cookie passes maxAge, the browser
+  // stops sending it and session.user becomes undefined.
+  const session = await getSession(cookieStore)
+
+  if (!session.user) {
+    // Subtle discriminant: if the cookie was PRESENT on the request but
+    // session.user is undefined, the likely cause is an expired/tampered
+    // cookie (browser sent it but iron-session rejected it as too old).
+    // Otherwise (no cookie at all) it's an unauthenticated visit. Both map
+    // to the client-side 'sign back in' CTA, but the distinction helps
+    // frontend UX: session_expired means "you were signed in; your session
+    // timed out" (→ wire code `token_expired`) whereas unauthorized means
+    // "you never signed in" (→ wire code `unauthorized`).
+    if (cookieStore.get(SESSION_COOKIE_NAME)) {
+      return { error: 'session_expired' }
+    }
     return { error: 'unauthorized' }
   }
-  const token = auth.slice('bearer '.length).trim()
-  if (!token) return { error: 'unauthorized' }
 
-  const { ENTRA_CLIENT_ID, ENTRA_TENANT_ID } = env()
-  try {
-    const { payload } = await jwtVerify(token, getJwks(), {
-      // Pitfall 6: issuer MUST include trailing /v2.0 (Entra v2 claim shape).
-      issuer: `https://login.microsoftonline.com/${ENTRA_TENANT_ID}/v2.0`,
-      // Pitfall 4: audience is the bare client-id GUID, NOT api://<guid>.
-      audience: ENTRA_CLIENT_ID,
-      algorithms: ['RS256'],
-      clockTolerance: 60,
-    })
+  // Pitfall 5 defence: Entra omits `roles` from id_token_claims entirely when
+  // the user has NO app-role assignments (not an empty array — an undefined
+  // field). Coerce to [] so `.includes()` below is safe and the missing-role
+  // path returns `forbidden`, not an unauthorized error.
+  const roles = session.user.roles ?? []
+  if (!roles.includes(REQUIRED_ROLE)) {
+    return { error: 'forbidden', upn: session.user.email }
+  }
 
-    // Tenant allowlist — Phase-5's SOLE code-level gate (CONTEXT §Auth
-    // boundary). Distinct 'wrong_tenant' discriminant so the caller can
-    // route the user to /access-denied instead of re-prompting sign-in.
-    if (payload.tid !== ENTRA_TENANT_ID) {
-      return { error: 'wrong_tenant' }
-    }
-
-    const oid = typeof payload.oid === 'string' ? payload.oid : null
-    const tid = typeof payload.tid === 'string' ? payload.tid : null
-    if (!oid || !tid) return { error: 'unauthorized' }
-
-    const preferredUsername =
-      typeof payload.preferred_username === 'string'
-        ? payload.preferred_username
-        : undefined
-
-    return { sub: oid, tenantId: tid, preferredUsername }
-  } catch (err) {
-    if (err instanceof joseErrors.JWTExpired) {
-      return { error: 'token_expired' }
-    }
-    return { error: 'unauthorized' }
+  return {
+    sub: session.user.oid,
+    email: session.user.email,
+    roles,
   }
 }
