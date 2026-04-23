@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config'
 import tsconfigPaths from 'vite-tsconfig-paths'
 import { readFileSync } from 'node:fs'
+import react from '@vitejs/plugin-react'
 
 // Vite/Vitest does NOT natively return raw string content for .md imports —
 // `assetsInclude` makes it treat them as assets (returning URL/path strings,
@@ -26,9 +27,13 @@ const rawMarkdown = {
 }
 
 export default defineConfig({
-  plugins: [tsconfigPaths(), rawMarkdown],
+  plugins: [react(), tsconfigPaths(), rawMarkdown],
   test: {
     environment: 'node',
-    include: ['src/**/__tests__/**/*.test.ts', 'scripts/**/__tests__/**/*.test.ts'],
+    include: [
+      'src/**/__tests__/**/*.test.ts',
+      'src/**/__tests__/**/*.test.tsx',
+      'scripts/**/__tests__/**/*.test.ts',
+    ],
   },
 })
