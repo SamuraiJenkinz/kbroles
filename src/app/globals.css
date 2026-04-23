@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme {
+  /* Neutral surfaces */
+  --color-background: #f7f7f8;
+  --color-foreground: #111827;
+  --color-neutral-card: #ffffff;
+  --color-neutral-border: #e5e7eb;
+  --color-neutral-muted: #6b7280;
+
+  /* Role accents (LOCKED by ROLE-03 / Pitfall 16 — always paired with icon) */
+  --color-consumer-600: #16a34a;  /* green-600 */
+  --color-consumer-50:  #f0fdf4;  /* green-50  */
+  --color-author-600:   #9333ea;  /* purple-600 */
+  --color-author-50:    #faf5ff;  /* purple-50  */
+
+  /* Accent for user bubble */
+  --color-primary: #2563eb;  /* blue-600 */
+
+  /* Warning for error card */
+  --color-warning-600: #d97706;  /* amber-600 */
+  --color-warning-50:  #fffbeb;  /* amber-50  */
+
+  /* Spacing scale additions if needed — defaults carry over */
+  --radius-bubble: 12px;
+}
+
+html, body { height: 100%; }
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Focus ring baseline (WCAG 2.1 AA) */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
