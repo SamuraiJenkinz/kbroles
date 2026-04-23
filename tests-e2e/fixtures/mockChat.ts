@@ -158,6 +158,125 @@ export async function mockChatSlow(route: Route): Promise<void> {
 
 // ─── /api/prompts mock ────────────────────────────────────────────────────────
 
+// ─── Phase 4 additions — fixtures for mockConfig, mockSources, mockChatWithCitations, mockChatFallback (page-level) ────
+
+/**
+ * Intercept GET /api/config → return fixed versions + stub email.
+ */
+export async function mockConfig(page: Page): Promise<void> {
+  await page.route('**/api/config', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        versions: { KB0022991: '13.0', KB0020882: '9.0', SNOW_FORM: '2026-04-23' },
+        contentStewardEmail: 'kb-knowledge-team@mmc.com',
+      }),
+    }),
+  )
+}
+
+/**
+ * Intercept GET /api/sources?source_id=X&section_id=Y → return canned body.
+ * Uses a small built-in dictionary for the sections referenced by Phase-4 specs.
+ */
+export async function mockSources(page: Page): Promise<void> {
+  const SECTIONS: Record<string, { title: string; body: string; url: string; version: string }> = {
+    'KB0020882/resolution-field-software': {
+      title: 'Resolution Field — Software',
+      body: '## Resolution Field — Software\n\nFor software tickets, the Resolution field must include:\n- Configuration Item\n- Assignment group\n- OPCO or Line of Business',
+      url: 'https://mmcnow.service-now.com/kb_view.do?sysparm_article=KB0020882',
+      version: '9.0',
+    },
+    'KB0022991/flagging-articles': {
+      title: 'Flagging Articles',
+      body: '## Flagging Articles\n\nUse the flag button at the top-right of any KB article to report:\n- Outdated content\n- Missing information\n- Broken links',
+      url: 'https://mmcnow.service-now.com/kb_view.do?sysparm_article=KB0022991',
+      version: '13.0',
+    },
+    'KB0022991/publishing-approval': {
+      title: 'Publishing and Approval Workflow',
+      body: '## Publishing and Approval Workflow\n\nBefore an article reaches Published state, it must pass:\n1. Author self-review\n2. Peer review\n3. Knowledge-Owner approval',
+      url: 'https://mmcnow.service-now.com/kb_view.do?sysparm_article=KB0022991',
+      version: '13.0',
+    },
+  }
+
+  await page.route('**/api/sources**', (route) => {
+    const url = new URL(route.request().url())
+    const sid = url.searchParams.get('source_id')
+    const sec = url.searchParams.get('section_id')
+    const key = `${sid}/${sec}`
+    const hit = SECTIONS[key]
+    if (!hit) {
+      route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'unknown_section' }),
+      })
+      return
+    }
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ source_id: sid, section_id: sec, ...hit }),
+    })
+  })
+}
+
+/**
+ * Intercept POST /api/chat → stream a single answer_delta + citations + done.
+ * Page-level variant (installs the route on the page rather than a Route object).
+ * The citations arg lets each spec pick which source to cite.
+ */
+export async function mockChatWithCitations(
+  page: Page,
+  opts: { deltaText: string; citations: Array<{ source_id: string; section_id: string; quote: string }>; requestId?: string },
+): Promise<void> {
+  await page.route('**/api/chat', async (route) => {
+    const requestId = opts.requestId ?? 'req-e2e-4'
+    const frames = [
+      `data: ${JSON.stringify({ type: 'answer_delta', text: opts.deltaText })}\n\n`,
+      `data: ${JSON.stringify({ type: 'citations', citations: opts.citations })}\n\n`,
+      `data: ${JSON.stringify({ type: 'done', can_answer: true, validator_flips: 0 })}\n\n`,
+    ]
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'X-Request-Id': requestId,
+        'Cache-Control': 'no-store',
+      },
+      body: frames.join(''),
+    })
+  })
+}
+
+/**
+ * Intercept POST /api/chat → deliver a fallback SSE event.
+ * Page-level variant (installs the route on the page rather than a Route object).
+ */
+export async function mockChatFallbackPage(
+  page: Page,
+  opts: { text: string; requestId?: string },
+): Promise<void> {
+  await page.route('**/api/chat', async (route) => {
+    const requestId = opts.requestId ?? 'req-e2e-fallback'
+    const fallbackFrame = `data: ${JSON.stringify({ type: 'fallback', reason: 'can_answer_false', text: opts.text })}\n\n`
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'X-Request-Id': requestId,
+        'Cache-Control': 'no-store',
+      },
+      body: fallbackFrame,
+    })
+  })
+}
+
+// ─── /api/prompts mock ────────────────────────────────────────────────────────
+
 /**
  * Registers route mocks for GET /api/prompts?role=consumer and ?role=author.
  * Returns 5 consumer chips and 8 author chips matching the Plan 02 fixtures.
