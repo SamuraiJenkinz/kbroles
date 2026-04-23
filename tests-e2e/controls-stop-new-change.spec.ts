@@ -16,7 +16,12 @@ import { mockPrompts, mockChatSuccess, mockChatSlow } from './fixtures/mockChat'
 
 test.describe('SC #3 — Stop / New conversation / Change role', () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => sessionStorage.clear())
+    // Phase 4 auto-fix: suppress About popover (auto-opens on first visit and
+    // adds 3 <li> items; unnecessary noise for control-flow tests).
+    await page.addInitScript(() => {
+      sessionStorage.clear()
+      localStorage.setItem('about_tooltip_seen_v1', 'true')
+    })
   })
 
   test('Stop cancels mid-stream and preserves accumulated text', async ({ page }) => {
@@ -55,6 +60,15 @@ test.describe('SC #3 — Stop / New conversation / Change role', () => {
     await page.getByRole('textbox').fill('first question')
     await page.getByRole('button', { name: /send message/i }).click()
     await expect(page.getByText(/flag an article/i)).toBeVisible()
+
+    // Phase 4 auto-fix: mockChatSuccess returns a citation which auto-opens the
+    // SourcePanel (z-50 fixed right-0 40vw). The panel overlaps the "New
+    // conversation" button on desktop viewports. Close the panel first via its
+    // close button before interacting with the header controls.
+    const closeBtn = page.getByRole('button', { name: /close source panel/i })
+    if (await closeBtn.isVisible()) {
+      await closeBtn.click()
+    }
 
     // Click New conversation
     await page.getByRole('button', { name: /new conversation/i }).click()

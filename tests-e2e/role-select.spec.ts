@@ -12,8 +12,14 @@ import { mockPrompts } from './fixtures/mockChat'
 
 test.describe('SC #1 — Role select landing', () => {
   test.beforeEach(async ({ page }) => {
-    // Clear sessionStorage so every test starts as a new user
-    await page.addInitScript(() => sessionStorage.clear())
+    // Clear sessionStorage so every test starts as a new user.
+    // Phase 4 auto-fix: also suppress the About popover (Phase 4 Phase-4 ships
+    // useAboutTooltip which auto-opens on first visit and adds 3 <li> items to
+    // the DOM — counted by getByRole('listitem') alongside chip listitems).
+    await page.addInitScript(() => {
+      sessionStorage.clear()
+      localStorage.setItem('about_tooltip_seen_v1', 'true')
+    })
     await mockPrompts(page)
   })
 

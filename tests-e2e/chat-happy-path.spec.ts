@@ -13,8 +13,13 @@ import { mockPrompts, mockChatSuccess } from './fixtures/mockChat'
 test('SC #2 — author chip click → streaming answer + controls + citation + timestamp', async ({
   page,
 }) => {
-  // Clear sessionStorage so we start fresh (no persisted role)
-  await page.addInitScript(() => sessionStorage.clear())
+  // Clear sessionStorage so we start fresh (no persisted role).
+  // Phase 4 auto-fix: suppress About popover (useAboutTooltip auto-opens on
+  // first visit; dismiss is unnecessary noise for this chat-path test).
+  await page.addInitScript(() => {
+    sessionStorage.clear()
+    localStorage.setItem('about_tooltip_seen_v1', 'true')
+  })
   await mockPrompts(page)
   await page.route('**/api/chat', (route) =>
     mockChatSuccess(route, {
@@ -33,8 +38,10 @@ test('SC #2 — author chip click → streaming answer + controls + citation + t
   // Answer text streamed into the assistant bubble
   await expect(page.getByText(/Short description field/i)).toBeVisible()
 
-  // Citation pill rendered — contains the source_id KB0022991
-  await expect(page.getByText(/KB0022991/)).toBeVisible()
+  // Citation chip button rendered for KB0022991.
+  // Phase 4 auto-fix: panel also shows KB0022991 badge — use getByRole('button')
+  // scoped to the chip (not the panel badge span) to avoid strict-mode collision.
+  await expect(page.getByRole('button', { name: /Open source KB0022991/ })).toBeVisible()
 
   // Copy button present (aria-label="Copy answer")
   await expect(page.getByRole('button', { name: /copy answer/i })).toBeVisible()
