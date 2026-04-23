@@ -2,8 +2,8 @@
 phase: 04-source-panel-trust-and-fallback-ui
 plan: 03
 type: execute
-wave: 2
-depends_on: [04-01]
+wave: 3
+depends_on: [04-01, 04-02]
 files_modified:
   - src/chat-ui/types.ts
   - src/chat-ui/chatReducer.ts
@@ -29,7 +29,7 @@ autonomous: true
 must_haves:
   truths:
     - "Fallback assistant responses render as a dedicated `FallbackCard` component in MessageList (NOT inside Message.tsx) — three independent visual signals: amber border, amber-tinted background, CircleOff icon + bold heading, plus NO KB avatar/timestamp/feedback/copy controls."
-    - "FallbackCard carries a primary `Flag this gap` button that opens `mailto:<CONTENT_STEWARD_EMAIL>?subject=...&body=...` URL-encoded per RFC 2368 (CRLF line breaks for Outlook compatibility)."
+    - "FallbackCard carries a primary `Flag this gap` anchor element (`<a href={mailtoHref}>`, styled like a button) whose href is `mailto:<CONTENT_STEWARD_EMAIL>?subject=...&body=...` URL-encoded per RFC 2368 (CRLF line breaks for Outlook compatibility). Anchor approach (not imperative `window.location.href = ...`) lets the browser's default mailto handler fire AND makes the URL assertable in Playwright via `toHaveAttribute('href', /^mailto:/)` without fragile window.location monkeypatching."
     - "Mailto body contains: Question text, Role, ISO 8601 timestamp, X-Request-Id from the SSE response headers."
     - "After click, the button label swaps to `Opened in mail client ✓` for that message's lifecycle (non-blocking ack — still clickable)."
     - "Header renders a freshness line `Grounded in KB0022991 v13.0 · KB0020882 v9.0 · Form schema 2026-04-23` on desktop; on mobile (<640px) shows `Grounded` with an ℹ icon that opens the same About popover."
@@ -58,7 +58,7 @@ must_haves:
       pattern: "FallbackCard"
     - from: "src/chat-ui/FallbackCard.tsx"
       to: "src/chat-ui/mailto.ts"
-      via: "button onClick triggers window.location = buildFlagGapMailto(...)"
+      via: "renders `<a href={buildFlagGapMailto(...)}>` (not imperative window.location assignment — lets the browser's mailto handler fire and makes the URL Playwright-assertable without monkeypatching)"
       pattern: "buildFlagGapMailto"
     - from: "src/chat-ui/Header.tsx"
       to: "src/chat-ui/useConfig.ts + src/chat-ui/AboutPopover.tsx"
@@ -332,14 +332,21 @@ export function FallbackCard({
 }) {
   const [flagged, setFlagged] = useState(false)
 
-  const handleFlag = () => {
-    const href = buildFlagGapMailto({
-      email: contentStewardEmail,
-      question: userQuestion,
-      role,
-      requestId: message.requestId ?? 'unknown',
-    })
-    window.location.href = href
+  // Build the mailto URL on render — rendering as an `<a href={...}>` (NOT
+  // imperative `window.location.href = href`) makes the URL assertable via
+  // Playwright `toHaveAttribute('href', ...)` without any window.location
+  // monkeypatching (which is unreliable in Chromium because window.location
+  // is non-configurable in real browsers).
+  const mailtoHref = buildFlagGapMailto({
+    email: contentStewardEmail,
+    question: userQuestion,
+    role,
+    requestId: message.requestId ?? 'unknown',
+  })
+
+  const handleClick = () => {
+    // Let the browser's default mailto handler fire (don't preventDefault).
+    // onClick is purely for the UX state swap to the "Opened ✓" label.
     setFlagged(true)
   }
 
@@ -368,11 +375,11 @@ export function FallbackCard({
           <p className="text-sm text-amber-950 dark:text-amber-100 whitespace-pre-wrap">
             {message.text}
           </p>
-          <button
-            type="button"
-            onClick={handleFlag}
+          <a
+            href={mailtoHref}
+            onClick={handleClick}
             className={cn(
-              'mt-3 inline-flex items-center gap-1.5 rounded-md border border-amber-700 bg-amber-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm',
+              'mt-3 inline-flex items-center gap-1.5 rounded-md border border-amber-700 bg-amber-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm no-underline',
               'hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500',
             )}
             aria-label="Flag this gap to the CTSS Knowledge team"
@@ -388,7 +395,7 @@ export function FallbackCard({
                 Flag this gap
               </>
             )}
-          </button>
+          </a>
         </div>
       </div>
     </div>
@@ -404,10 +411,10 @@ export function FallbackCard({
 2. **Pitfall 16 — colour never alone:** for every `text-amber-*` or `bg-amber-*` element, assert an SVG child (icon) is present.
 3. **Verbatim fallback text:** render with a message whose text is the exact FALLBACK_STRING constant (imported from `@/grounding/fallback`); the `<p>` contains that exact text character-for-character.
 4. **Not styled like Message:** assert NO element contains `KB` avatar text, NO `<time>` element, NO `role="button"` named `/helpful|not helpful|copy/i`.
-5. **Flag button renders and is primary-styled** (bg-amber-600 + text-white).
-6. **Click: window.location.href set to a mailto: URL** containing the user question (URL-encoded) + role param. Stub `window.location` assignment via property setter.
-7. **After click: label swaps to `Opened in mail client` with `Check` icon instead of Mail icon.** Button remains clickable (not disabled).
-8. **Accessibility: `role="region"` + `aria-label="Fallback response"` on outer container.** Button has `aria-label` containing "Flag this gap".
+5. **Flag link renders as an `<a>` (role=link) and is primary-styled** (bg-amber-600 + text-white). Assert `getByRole('link', { name: /Flag this gap/i })` is present (NOT `role=button`).
+6. **Anchor href is a mailto: URL containing the user question + role.** Assert the link element `toHaveAttribute('href', /^mailto:/)` and that `decodeURIComponent(link.getAttribute('href'))` contains the user question text AND `Role: <role>`. No `window.location` stubbing needed — the anchor href is part of the DOM.
+7. **After click: label swaps to `Opened in mail client` with `Check` icon instead of Mail icon.** Link remains clickable (not disabled); `href` still points to the mailto URL. The onClick handler does NOT call `preventDefault()` — default browser mailto behaviour fires.
+8. **Accessibility: `role="region"` + `aria-label="Fallback response"` on outer container.** Link has `aria-label` containing "Flag this gap".
 
 **2. `src/chat-ui/MessageList.tsx`** — add fallback branch + pipe role/email/userQuestion.
 
@@ -440,7 +447,7 @@ Before the existing TypingDots/Message branch, ADD (right after the early return
 })}
 ```
 
-Also forward the new `onChipClick` + `activeSource` props from Plan 02 through to the default `<Message>` render. (If those have already landed via Plan 02, keep them.)
+Plan 02 (wave 2) has already added `onChipClick` + `activeSource` props to `MessageList` and the default `<Message>` render — this plan runs in wave 3, so those props WILL be present in the file on disk. Keep those props wired through to the default `<Message>` render. Do NOT re-add them. This plan's ONLY additions to MessageList are the new `role` and `contentStewardEmail` props, the fallback-state branch that renders `<FallbackCard>`, and the preceding-user-question extraction logic.
 
 **Test `MessageList.test.tsx`** (extend or create):
 1. Renders FallbackCard for a message with `state:'fallback'` (verify by test-id or querying for `role="region"` with aria-label fallback-response).
@@ -464,7 +471,7 @@ Remove the now-unused imports (`Info`). Run typecheck to surface any remaining r
 pnpm typecheck && pnpm test src/chat-ui/__tests__/FallbackCard.test.tsx src/chat-ui/__tests__/MessageList.test.tsx src/chat-ui/__tests__/Message.test.tsx (all green) — existing Message tests may need minor updates to match the new render path.
   </verify>
   <done>
-FallbackCard renders with three independent visual signals (border + bg + icon/bold heading) + NO message affordances. MessageList routes fallback-state messages to FallbackCard; Message.tsx no longer handles fallback. Flag button opens mailto with correct RFC-encoded body. Pitfall 20 + Pitfall 16 provable via tests.
+FallbackCard renders with three independent visual signals (border + bg + icon/bold heading) + NO message affordances. MessageList routes fallback-state messages to FallbackCard; Message.tsx no longer handles fallback. Flag link is an `<a href={mailtoHref}>` with correct RFC-encoded body; default browser mailto handler fires on click. Pitfall 20 + Pitfall 16 provable via tests.
   </done>
 </task>
 
@@ -664,9 +671,10 @@ Pass `role` + `contentStewardEmail` down to MessageList:
 ```
 
 **Test ChatSurface.test.tsx** (extend from Plan 02):
-- After fallback SSE event + `requestId: 'req-abc-123'`, assert that the message-list FallbackCard button's mailto href (check via inspecting `window.location.href` assignment after click) contains `Request%20ID%3A%20req-abc-123`.
+- After fallback SSE event + `requestId: 'req-abc-123'`, assert the intermediate wiring contract: `state.messages.at(-1)?.requestId === 'req-abc-123'` (expose the reducer state via a test-only harness prop or via a `data-testid` attribute carrying the id, or via importing the reducer and feeding the same action sequence). This proves the `requestId` propagated from SSE header → `handleEvent` → `assistant/fallback` dispatch → reducer state → message object — independent of the mailto URL end-result.
+- After the same fallback SSE scenario, assert that the rendered FallbackCard's Flag link `toHaveAttribute('href', /Request%20ID%3A%20req-abc-123/)` (the end-to-end confirmation that the same requestId made it all the way into the encoded mailto body).
 - Freshness line visible in header area.
-- Flag button successfully constructs a mailto URL with the server-provided requestId.
+- Flag link successfully constructs a mailto URL with the server-provided requestId (verified via `href` attribute, not via `window.location` stub).
   </action>
   <verify>
 pnpm typecheck && pnpm test src/chat-ui/__tests__/AboutPopover.test.tsx src/chat-ui/__tests__/Header.test.tsx src/chat-ui/__tests__/ChatSurface.test.tsx (all green)
@@ -693,7 +701,7 @@ AboutPopover auto-opens on first run, dismisses via Got-it or X, re-opens on ℹ
 - SC #5: freshness line text = `Grounded in KB0022991 v{v1} · KB0020882 v{v2} · Form schema {v3}`; first-run About popover covers the three bullets specified.
 - Pitfall 20 enforced: FallbackCard.test asserts all three visual signals present simultaneously; no KB-avatar/timestamp/feedback/copy in the render.
 - Pitfall 16 enforced: every amber element in FallbackCard has a paired icon; freshness line carries the ℹ icon alongside the colour (grey muted text with icon visible).
-- `window.location.href` assignment (flag button click) uses the pure `buildFlagGapMailto` builder — no ad-hoc URL assembly in the component.
+- Flag link's `href` attribute is built by the pure `buildFlagGapMailto` builder — no ad-hoc URL assembly in the component, no imperative `window.location` mutation.
 </success_criteria>
 
 <output>

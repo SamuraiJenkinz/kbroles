@@ -29,6 +29,8 @@ must_haves:
     - "Desktop (>=1024px) panel is Radix Dialog `modal={false}` with `onOpenAutoFocus` prevented (chat input retains focus); mobile (<1024px) is an overlay drawer via responsive CSS."
     - "Panel open/closed state persists via `sessionStorage.panel_open` (string `'true'`/`'false'`, strict equality read)."
     - "Citation chips in Message.tsx become clickable buttons using `getSourceBadge` for colour + icon (not raw grey Paperclip)."
+    - "PANE-01 width from REQUIREMENTS.md (\"~256px wide\") is intentionally superseded by 04-CONTEXT.md's authoritative decision: 40vw persistent pane on >=1024px, full-height drawer <1024px (no drag-to-resize in v1). SourcePanel ships `lg:w-[40vw]` — this is a considered design decision and NOT a regression; record in 04 decisions log."
+    - "SourcePanel root `<Dialog.Content>` has `aria-labelledby=\"source-panel-title\"` and the header `Dialog.Title` has matching `id=\"source-panel-title\"` so E2E specs can unambiguously scope `getByRole('dialog', { name: /.../ })` or `locator('[aria-labelledby=\"source-panel-title\"]')` without colliding with AboutPopover's Radix Popover (also `role=\"dialog\"`) or ChangeRoleDialog."
   artifacts:
     - path: "src/chat-ui/usePanelState.ts"
       provides: "Panel state hook with auto-open-on-first-citation semantics"
