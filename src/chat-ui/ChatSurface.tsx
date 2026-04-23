@@ -5,6 +5,7 @@ import { useChatStream } from './useChatStream'
 import { useDraftBuffer } from './useDraftBuffer'
 import { usePrompts } from './usePrompts'
 import { usePanelState } from './usePanelState'
+import { useConfig } from './useConfig'
 import type { Role, SseEvent, Message } from './types'
 import { Header } from './Header'
 import { Greeting } from './Greeting'
@@ -58,6 +59,9 @@ export function ChatSurface({
 
   // ── Panel state (Phase 4 — source panel open/closed + loaded source) ────────
   const panel = usePanelState()
+
+  // ── Config (Plan 04-03 — contentStewardEmail + freshness versions) ──────────
+  const { config } = useConfig()
 
   // ── Event handler: routes SSE events into chatReducer ──────────────────────
   // (LOCKED event→dispatch map from plan context)
@@ -208,6 +212,8 @@ export function ChatSurface({
             <MessageList
               messages={state.messages}
               inFlightId={state.inFlightId}
+              role={role}
+              contentStewardEmail={config?.contentStewardEmail ?? 'kb-knowledge-team@mmc.com'}
               onCopy={() => { /* copy handled internally by AssistantControls */ }}
               onFeedback={handleFeedback}
               onRetry={handleRetry}   // consumes Plan 04's onRetry prop (no mutation)

@@ -8,6 +8,9 @@ import { Timestamp } from './Timestamp'
 import { getSourceBadge, badgeClassesFor, ringClassesFor } from '@/ui/sourceBadges'
 import type { BadgeDef } from '@/ui/sourceBadges'
 
+// Note: fallback-state messages are NOT rendered by this component.
+// MessageList routes state==='fallback' messages to FallbackCard (Pitfall 20).
+
 // ── Icon map at module scope (Pitfall 16: icon always paired with colour) ─────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -62,8 +65,9 @@ export function Message({
     )
   }
 
-  const isFallback = message.state === 'fallback'
-  const showControls = message.state === 'done' || message.state === 'fallback'
+  // Fallback-state messages are rendered by FallbackCard (via MessageList), not here.
+  // showControls: only show for 'done' state (fallback has its own Card with Flag button).
+  const showControls = message.state === 'done'
 
   return (
     <div className="flex items-start gap-2 px-4">
@@ -76,15 +80,8 @@ export function Message({
         <div
           className={cn(
             'rounded-xl rounded-tl-sm bg-neutral-100 px-4 py-2.5 text-sm',
-            isFallback && 'border-l-4 border-warning-600 pl-3',
           )}
         >
-          {isFallback && (
-            <span className="mb-1 flex items-center gap-1 text-xs text-warning-600">
-              <FileText size={14} aria-hidden />
-              <span>This answer is a general response</span>
-            </span>
-          )}
           <p className="whitespace-pre-wrap">{message.text}</p>
 
           {/* Citations — colour-coded clickable chips (Pitfall 16: icon + colour always paired) */}
