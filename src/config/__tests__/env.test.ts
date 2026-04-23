@@ -139,3 +139,45 @@ describe('env — Phase-4 CONTENT_STEWARD_EMAIL (Plan 04-01 Task 2)', () => {
     ).toThrow(/Invalid env/)
   })
 })
+
+describe('env — Phase-5 Entra ID SSO (Plan 05-01 Task 1)', () => {
+  beforeEach(() => {
+    __resetEnvCacheForTests()
+  })
+
+  afterEach(() => {
+    __resetEnvCacheForTests()
+  })
+
+  it("defaults ENTRA_CLIENT_ID to 'dev-only-do-not-use-in-prod' when unset", () => {
+    const env = loadEnv(REQUIRED_VARS as unknown as NodeJS.ProcessEnv)
+    expect(env.ENTRA_CLIENT_ID).toBe('dev-only-do-not-use-in-prod')
+  })
+
+  it("defaults ENTRA_TENANT_ID to 'dev-only-do-not-use-in-prod' when unset", () => {
+    const env = loadEnv(REQUIRED_VARS as unknown as NodeJS.ProcessEnv)
+    expect(env.ENTRA_TENANT_ID).toBe('dev-only-do-not-use-in-prod')
+  })
+
+  it('accepts custom ENTRA_CLIENT_ID + ENTRA_TENANT_ID values', () => {
+    const env = loadEnv({
+      ...REQUIRED_VARS,
+      ENTRA_CLIENT_ID: 'abc',
+      ENTRA_TENANT_ID: 'def',
+    } as unknown as NodeJS.ProcessEnv)
+    expect(env.ENTRA_CLIENT_ID).toBe('abc')
+    expect(env.ENTRA_TENANT_ID).toBe('def')
+  })
+
+  it('rejects empty-string ENTRA_CLIENT_ID (z.string().min(1) guard)', () => {
+    expect(() =>
+      loadEnv({ ...REQUIRED_VARS, ENTRA_CLIENT_ID: '' } as unknown as NodeJS.ProcessEnv),
+    ).toThrow(/Invalid env/)
+  })
+
+  it('rejects empty-string ENTRA_TENANT_ID (z.string().min(1) guard)', () => {
+    expect(() =>
+      loadEnv({ ...REQUIRED_VARS, ENTRA_TENANT_ID: '' } as unknown as NodeJS.ProcessEnv),
+    ).toThrow(/Invalid env/)
+  })
+})
