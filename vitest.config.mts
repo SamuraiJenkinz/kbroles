@@ -30,6 +30,8 @@ export default defineConfig({
   plugins: [react(), tsconfigPaths(), rawMarkdown],
   test: {
     environment: 'node',
+    globals: true,
+    setupFiles: ['./src/test-setup.ts'],
     include: [
       'src/**/__tests__/**/*.test.ts',
       'src/**/__tests__/**/*.test.tsx',
