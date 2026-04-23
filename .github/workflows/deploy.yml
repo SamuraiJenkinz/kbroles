@@ -1,22 +1,17 @@
-name: Deploy to Azure App Service
+name: Deploy to On-Prem Windows
 
 on:
   push:
     branches: [main]
   workflow_dispatch: {}
 
-permissions:
-  id-token: write
-  contents: read
-
 env:
   NODE_VERSION: '20.x'
-  AZURE_WEBAPP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
 
 jobs:
-  build-and-deploy:
+  build:
+    name: Build standalone bundle
     runs-on: ubuntu-latest
-    environment: production
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,42 +37,107 @@ jobs:
         run: pnpm test
 
       - name: Build (Next.js standalone)
-        env:
-          NEXT_PUBLIC_ENTRA_CLIENT_ID: ${{ secrets.NEXT_PUBLIC_ENTRA_CLIENT_ID }}
-          NEXT_PUBLIC_ENTRA_TENANT_ID: ${{ secrets.NEXT_PUBLIC_ENTRA_TENANT_ID }}
+        # Phase 5.1 — no build-time Entra/client-side auth secrets injected.
+        # All auth is server-side (iron-session + msal-node) and reads env at
+        # request time from AWS Secrets Manager on the Windows box. Build-
+        # time secrets are no longer required.
         run: pnpm build
 
-      # Pitfall 3: Next.js standalone output OMITS `public/` and `.next/static/`.
-      # Must copy them into the standalone folder before deploying, or the
-      # deployed bundle returns 404 for all public assets and any static asset.
       - name: Assemble standalone bundle
+        # Pitfall 3 — Next.js standalone output OMITS `public/` and
+        # `.next/static/`. Must copy them in before tarring or the deployed
+        # bundle returns 404 for all public assets.
         run: |
           cp -r public .next/standalone/public
           cp -r .next/static .next/standalone/.next/static
 
-      - name: Azure login (OIDC federated credential)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Package artifact
+        run: tar -czf kbassistant-build.tar.gz -C .next/standalone .
 
-      - name: Deploy to App Service
-        uses: azure/webapps-deploy@v3
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          package: .next/standalone
-          startup-command: 'node server.js'
+          name: kbassistant-build
+          path: kbassistant-build.tar.gz
+          retention-days: 3
 
-      # Sole deploy gate for v1 (CONTEXT § CI/CD pipeline). Does NOT hit
-      # /api/chat — that would burn an MGTI token per push and is deferred
-      # to a Phase-6 nightly scheduled workflow.
-      - name: Canary smoke /api/health
-        env:
-          AZURE_WEBAPP_HOSTNAME: ${{ secrets.AZURE_WEBAPP_HOSTNAME }}
+  deploy:
+    name: Deploy to Windows box
+    runs-on: [self-hosted, windows, kbassistant]
+    needs: build
+    environment: production
+    env:
+      KBASSISTANT_DEPLOY_ROOT: ${{ vars.KBASSISTANT_DEPLOY_ROOT || 'D:\kbroles\.next\standalone' }}
+      KBASSISTANT_SCHEDULED_TASK: ${{ vars.KBASSISTANT_SCHEDULED_TASK || 'KbAssistant' }}
+      KBASSISTANT_HEALTH_URL: ${{ vars.KBASSISTANT_HEALTH_URL || 'http://localhost:3001/api/health' }}
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: kbassistant-build
+
+      - name: Stop Scheduled Task, swap files, start, canary
+        shell: pwsh
         run: |
-          # 30s warm-up so App Service finishes swapping the slot / booting.
-          sleep 30
-          RESPONSE=$(curl --fail --max-time 30 --silent "https://${AZURE_WEBAPP_HOSTNAME}/api/health")
-          echo "$RESPONSE"
-          echo "$RESPONSE" | jq -e '.status == "ok"' >/dev/null
+          $ErrorActionPreference = 'Stop'
+          $deployRoot = $env:KBASSISTANT_DEPLOY_ROOT
+          $taskName   = $env:KBASSISTANT_SCHEDULED_TASK
+          $healthUrl  = $env:KBASSISTANT_HEALTH_URL
+          $prevRoot   = "$deployRoot.prev"
+
+          Write-Host "Stopping scheduled task $taskName..."
+          schtasks /end /tn $taskName | Out-Null
+          # schtasks /end returns exit 1 if the task is not currently running — tolerate.
+
+          # Rotate: previous .prev (if any) → gone; current → .prev; new → current.
+          if (Test-Path $prevRoot) {
+            Write-Host "Removing stale $prevRoot..."
+            Remove-Item $prevRoot -Recurse -Force
+          }
+          if (Test-Path $deployRoot) {
+            Write-Host "Rotating $deployRoot -> $prevRoot..."
+            Rename-Item -Path $deployRoot -NewName ([System.IO.Path]::GetFileName($prevRoot))
+          }
+
+          Write-Host "Extracting new bundle into $deployRoot..."
+          New-Item -ItemType Directory -Path $deployRoot -Force | Out-Null
+          tar -xzf kbassistant-build.tar.gz -C $deployRoot
+
+          Write-Host "Starting scheduled task $taskName..."
+          schtasks /run /tn $taskName
+          if ($LASTEXITCODE -ne 0) {
+            throw "schtasks /run failed with exit $LASTEXITCODE"
+          }
+
+          Write-Host "Waiting 30s for service warm-up..."
+          Start-Sleep -Seconds 30
+
+          Write-Host "Canary smoke: $healthUrl"
+          $response = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 15
+          if ($response.status -ne 'ok') {
+            throw "Health check failed: $($response | ConvertTo-Json -Compress)"
+          }
+          Write-Host "Deploy verified: $($response | ConvertTo-Json -Compress)"
+
+      - name: Rollback on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          $deployRoot = $env:KBASSISTANT_DEPLOY_ROOT
+          $taskName   = $env:KBASSISTANT_SCHEDULED_TASK
+          $prevRoot   = "$deployRoot.prev"
+
+          Write-Host "Rollback triggered. Stopping task..."
+          schtasks /end /tn $taskName | Out-Null
+
+          if (Test-Path $prevRoot) {
+            if (Test-Path $deployRoot) {
+              Remove-Item $deployRoot -Recurse -Force
+            }
+            Write-Host "Restoring $prevRoot -> $deployRoot..."
+            Rename-Item -Path $prevRoot -NewName ([System.IO.Path]::GetFileName($deployRoot))
+            schtasks /run /tn $taskName
+            Write-Host "Rollback complete. Manual investigation required."
+          } else {
+            Write-Host "No $prevRoot to roll back to. Task remains stopped. Manual intervention required."
+          }
