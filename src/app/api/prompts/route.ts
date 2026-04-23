@@ -7,10 +7,12 @@ import { SUGGESTED_PROMPTS } from '@/prompts/suggested'
  * Runtime + cache contract (02-CONTEXT.md §4.2):
  *   - Node runtime (consistency with /api/chat; Edge is disallowed elsewhere
  *     for the NODE_EXTRA_CA_CERTS reason — no runtime split within the API).
- *   - `dynamic = 'force-static'` is INTENTIONAL for this route: the chip list
- *     is identical for every caller with the same `role`, and the body is a
- *     pure function of SUGGESTED_PROMPTS[role]. Contrast with /api/chat which
- *     must be `force-dynamic` because SSE is per-request and non-cacheable.
+ *   - `dynamic = 'force-dynamic'`: the response body keys on the `role` query
+ *     parameter, and Next's force-static cache layer drops query strings at
+ *     runtime (request.url loses ?role=...), which 400s every real request
+ *     with role_required. Proxy caching is still achieved via the
+ *     Cache-Control header below — shared caches key on full URL including
+ *     query string, so consumer vs author responses stay distinct.
  *   - `Cache-Control: public, max-age=3600, stale-while-revalidate=86400` lets
  *     a shared proxy hold the chips for 1h and propagate a redeploy within
  *     24h without re-fetching on every pageload. `Vary: Accept-Encoding`
@@ -28,7 +30,7 @@ import { SUGGESTED_PROMPTS } from '@/prompts/suggested'
 import type { Role } from '@/grounding/rolePreludes'
 
 export const runtime = 'nodejs'
-export const dynamic = 'force-static'
+export const dynamic = 'force-dynamic'
 
 const ALLOWED: readonly Role[] = ['consumer', 'author'] as const
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { GET } from '@/app/api/prompts/route'
+import { GET, dynamic } from '@/app/api/prompts/route'
 import { SUGGESTED_PROMPTS } from '@/prompts/suggested'
 
 /**
@@ -50,6 +50,14 @@ describe('GET /api/prompts — happy paths', () => {
       'public, max-age=3600, stale-while-revalidate=86400',
     )
     expect(res.headers.get('vary')).toBe('Accept-Encoding')
+  })
+
+  // Drift guard: force-static drops the query string at runtime (request.url
+  // loses ?role=...), which 400s every real request with role_required. The
+  // route MUST stay force-dynamic; proxy caching is still achieved via the
+  // Cache-Control header above.
+  it('route exports dynamic = "force-dynamic" (force-static strips query params at runtime)', () => {
+    expect(dynamic).toBe('force-dynamic')
   })
 })
 
