@@ -11,26 +11,51 @@
  * Unknown keys return undefined so callers can fall back to source_id alone
  * (UTIL-01 copy-suffix degrades gracefully per CONTEXT §Copy answer).
  *
- * Phase-3 minimum seed — Phase-4 (PANE-01) will extend with additional
- * source-panel header vocabulary as the corpus evolves.
+ * Single source of truth: titles are derived from SOURCE_BADGES labels
+ * (src/ui/sourceBadges.ts) — the test in sourceBadges.test.ts enforces parity
+ * between this map and SOURCE_BADGES.
+ *
+ * Phase-3 seed entries preserved; Phase-4 extended to cover all 22 sections.
  */
 
 export const SOURCE_TITLES: Record<string, string> = {
-  // KB0022991 (flagging articles) — consumer-facing
-  'flagging-articles': 'Flagging Articles',
-  'leaving-feedback': 'Leaving Feedback',
-  'navigating-kb': 'Navigating the KB',
+  // ── KB0022991 (6 sections) ─────────────────────────────────────────────
+  'flagging-articles':  'Flagging Articles',
+  'publishing-approval': 'Publishing and Approval Workflow',
+  'approvers':          'Publishing Approvers',
+  'edit-retire-delete': 'Edit / Retire / Delete Lifecycle',
+  'knowledge-blocks':   'Knowledge Blocks (Knowledge Team Only)',
+  'criteria-check':     'Colleague Knowledge Criteria Check',
 
-  // KB0020882 (author workflow) — author-facing
-  'resolution': 'Resolution',
-  'short-description': 'Short Description',
-  'approvers': 'Approvers',
-  'categories': 'Categories',
-  'attachments': 'Attachments',
-  'publishing': 'Publishing',
+  // ── KB0020882 (9 sections) ─────────────────────────────────────────────
+  'who-can-submit':                   'Who Can Submit',
+  'article-creation-steps':           'Article Creation Steps',
+  'naming-convention':                'Article Naming Convention',
+  'required-fields':                  'Required Fields',
+  'resolution-field-software':        'Resolution Field — Software (11-point)',
+  'resolution-field-support-process': 'Resolution Field — Support Process (7-point)',
+  'security-rules':                   'Security Rules',
+  'attachments':                      'Attachments',
+  'categorisation':                   'Categorisation',
 
-  // SNOW_FORM (field schema)
-  'form-fields': 'Article Form Fields',
+  // ── SNOW_FORM (7 sections) ─────────────────────────────────────────────
+  // Note: 'required-fields' is shared (KB0020882 + SNOW_FORM → same label 'Required Fields')
+  'short-description':  'Short Description Field',
+  'article-body':       'Article Body Field',
+  'resolution-field':   'Resolution Field',
+  'configuration-item': 'Configuration Item Field',
+  'optional-fields':    'Optional Fields',
+  'workflow-fields':    'Workflow State Fields',
+
+  // Phase-3 legacy keys preserved for UTIL-01 backward compatibility.
+  // These were seed entries that do not map to real registry section_ids;
+  // kept so existing copy-suffix tests continue to pass.
+  'leaving-feedback':  'Leaving Feedback',
+  'navigating-kb':     'Navigating the KB',
+  'resolution':        'Resolution',
+  'categories':        'Categories',
+  'publishing':        'Publishing',
+  'form-fields':       'Article Form Fields',
 }
 
 /**
