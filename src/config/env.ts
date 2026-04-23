@@ -57,19 +57,13 @@ const EnvSchema = z.object({
   // runtime regex check that at least an @ appears.
   CONTENT_STEWARD_EMAIL: z.string().min(1).regex(/@/).optional().default('kb-knowledge-team@mmc.com'),
 
-  // Phase-5 Entra ID SSO (AUTH-01, AUTH-03).
+  // Phase 5.1 — SERVER-ONLY Entra confidential-client auth. Used by
+  // @/auth/msalClient.ts (ConfidentialClientApplication constructor). No
+  // NEXT_PUBLIC_ prefix — these values never reach the browser bundle.
   //
-  // SERVER-SIDE keys. Used by `src/app/api/_middleware.ts` (Plan 03) to
-  // validate JWTs from Entra. Separate from NEXT_PUBLIC_ENTRA_* keys (which
-  // are inlined into the browser bundle at build time by Next.js) —
-  // RESEARCH open-question #1 resolves this as the documented Next.js
-  // pattern: same GUID values, two keys, different visibility.
-  //
-  // Optional + default 'dev-only-do-not-use-in-prod' in non-production
-  // environments so Phase 2/3/4 test suites don't need to stub them.
-  // Production `loadEnv()` callers must set real values OR an explicit
-  // production guard elsewhere (checked in Plan 03 _middleware.ts — real
-  // values are enforced because the JWT verifier would fail otherwise).
+  // Dev defaults 'dev-only-do-not-use-in-prod' so local pnpm dev + test
+  // suites work without Entra; production operators set real GUIDs via
+  // AWS Secrets Manager → loadSecrets() → process.env.
   ENTRA_CLIENT_ID: z
     .string()
     .min(1)

@@ -2,12 +2,13 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   // Produce a self-contained server bundle at `.next/standalone/server.js`
-  // for the Azure App Service deploy (Plan 05-05 / DELV-02). The GitHub
-  // Actions workflow copies `public/` + `.next/static/` INTO the standalone
-  // folder (Pitfall 3 — Next omits them by default) and uploads the whole
-  // directory. Azure App Service startup command is `node server.js`.
-  // Requires `.npmrc node-linker=hoisted` (Plan 05-01 / Pitfall 10) so the
-  // standalone tracer can resolve deps from a flat node_modules tree.
+  // for the on-prem Windows Server deploy (Phase 5.1 — DELV-01 reassigned
+  // from Azure App Service). The GitHub Actions workflow (Plan 07) copies
+  // `public/` + `.next/static/` INTO the standalone folder before uploading
+  // as an artifact; the self-hosted Windows runner unpacks it and the
+  // Windows Scheduled Task runs `node.exe server.js` (see docs/deploy-
+  // windows.md). Requires `.npmrc node-linker=hoisted` so the standalone
+  // tracer can resolve deps from a flat node_modules tree.
   output: 'standalone',
   // Prevent Turbopack from bundling pino's worker-thread deps (thread-stream,
   // real-require, etc). Without this, `next dev` / `next build` crashes with
