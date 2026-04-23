@@ -11,19 +11,19 @@ See: .planning/ROADMAP.md (6 phases, standard depth)
 
 ## Current Position
 
-Phase: 4 of 6 (Source Panel, Trust & Fallback UI) — COMPLETE + HUMAN-VERIFIED
-Plan: 4 (e2e-success-criteria-and-anchor-check) — COMPLETE
-Status: Phase 4 complete + verified. Verifier returned `human_needed` (5/5 programmatic SCs PASS; 4 items needed real-browser confirmation: 2s amber fade, ESC-to-close on Radix modal=false, mobile drawer <1024px, mailto Outlook CRLF). User confirmed 3/4 in browser 2026-04-23 (mobile drawer accepted as structurally verified). Two gaps closed during human verification and bundled into Phase-4 closure: (a) freshness line truncation — `sm:inline` doesn't respect `overflow:hidden`, switched to `sm:block` + `min-w-0 flex-1 truncate` (69ac805); (b) Radix Dialog accessibility warning — manual `id="source-panel-title"` on Dialog.Title + `aria-labelledby="source-panel-title"` on Dialog.Content bypassed Radix's useId-based title↔content auto-wiring, fired the "DialogContent requires a DialogTitle" dev overlay warning. Removed the manual overrides and let Radix wire automatically; migrated 3 Playwright specs from `[aria-labelledby="source-panel-title"]` to `[data-source-panel="true"]` selector (5961a06). Note: Plan 02's SUMMARY.md had flagged this warning as "harmless" — that was incorrect; dev-overlay warnings are real contract violations. Favicon 404 noted as known-deferred (trivial follow-up, out of Phase 4 scope). Final: 516 unit + 19 E2E = 535 total green; `pnpm typecheck` clean; VERIFICATION.md `passed`; 12 requirements (PANE-01..07, FBK-01/03/04, TRST-01/02) Complete. Phase 5 UNBLOCKED.
-Last activity: 2026-04-23 — Phase 4 closure. Commits: de22bb6 (fixtures+anchorIds) / 004ebf4 (SC#1/2/3 specs) / 0954be5 (SC#4/5+regressions) / a0d7778 (Plan 04-04 metadata) / 69ac805 (freshness truncate fix) / 5961a06 (Radix Dialog warning fix).
+Phase: 5 of 6 (SSO & Teams Delivery) — IN PROGRESS
+Plan: 1 (auth-foundation) — COMPLETE
+Status: Plan 05-01 COMPLETE autonomous (2 tasks, no checkpoints). Deps installed — @azure/msal-browser@5.8.0 (minor-newer than plan-locked 5.6.3; within major 5, accepted per plan escape hatch — createNestablePublicClientApplication still exported), @azure/msal-react@5.3.1, @microsoft/teams-js@2.52.0, jose@6.2.2 (prod) + mock-jwks@3.3.5 (dev). `.npmrc` node-linker=hoisted created (Pitfall 10 pre-empt for Plan 05-05 Next.js standalone deploy). EnvSchema extended with ENTRA_CLIENT_ID + ENTRA_TENANT_ID (both optional + default 'dev-only-do-not-use-in-prod' so Phase 2/3/4 tests continue to pass without stubbing; Plan 03 middleware enforces real values via JWT verify). `src/auth/detectHost.ts` (Promise.race against microsoftTeams.app.initialize() with 150ms timeout, module-memoised, handles both hang AND reject paths). `src/auth/msalConfig.ts` (authority=login.microsoftonline.com/${tid} no /v2.0 suffix; cacheLocation=sessionStorage; SSR-guarded redirectUri; DEFAULT_SCOPES=[openid,profile,email,User.Read]). `src/auth/msalInstance.ts` (singleton via MSAL v5 createNestablePublicClientApplication — NAA entry point; hard-errors on server context). Anti-pattern greps clean: supportsNestedAppAuth (0), microsoftTeams.getAuthToken (0). DEVIATION (Rule 1 library drift): MSAL v5 BrowserAuthOptions dropped navigateToLoginRequestUrl AND CacheOptions dropped storeAuthStateInCookie; plan snippet targeted v3/v4. Removed both keys, added in-file drop documentation; defaults equivalent (state-capture on redirect; evergreen sessionStorage). 543/543 tests green (16 net-new vs plan start: 5 env + 4 detectHost + 7 msalConfig; additional deltas absorbed from parallel Plan 05-02 wave ErrorCard token_expired tests). Three pre-existing uncommitted Plan 05-02 residue edits left in working tree (ErrorCard.tsx/test + types.ts) — NOT my plan content, left for Plan 05-02 executor to fold.
+Last activity: 2026-04-23 — Plan 05-01 complete. Commits: 8bf2998 (chore deps+.npmrc+env) / ca833e6 (feat detectHost+msalConfig+msalInstance) + pending docs metadata commit.
 
-Progress: [████████████████████████████████░] Phases 1–4 of 6 complete; Phase 5 UNBLOCKED
+Progress: [████████████████████████████████░] Phases 1–4 of 6 complete; Phase 5 Plan 01 of 5 complete; Plans 02–05 pending
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 15
-- Average duration: ~8.8 min active
-- Total execution time: ~149 min active (Plan 01 wall-clock includes ~1h 44min human-loop prod-smoke checkpoint)
+- Total plans completed: 16
+- Average duration: ~8.6 min active
+- Total execution time: ~155 min active (Plan 01 wall-clock includes ~1h 44min human-loop prod-smoke checkpoint)
 
 **By Phase:**
 
@@ -32,6 +32,8 @@ Progress: [███████████████████████
 | 1 — Grounding Foundation | 5 / 5 (complete) | ~31 min | ~6 min |
 | 2 — Chat Backend BFF     | 4 / 4 (complete) | ~50 min active | ~12.5 min |
 | 3 — Role Experience & Chat UI | 6 / 6 complete | ~38 min (Plans 01–06) | ~6.3 min |
+| 4 — Source Panel, Trust & Fallback UI | 4 / 4 complete | ~53 min (Plans 01–04) | ~13.3 min |
+| 5 — SSO & Teams Delivery | 1 / 5 complete | ~5.5 min (Plan 01 only) | ~5.5 min |
 
 **Recent Trend:**
 - 01-scaffold-registry-schema: 7 min, 8 tasks, 6 feat commits + 1 docs metadata commit, 23/23 tests green
@@ -51,6 +53,7 @@ Progress: [███████████████████████
 - 03-03-persistence-and-stream-hooks: ~4 min active; 2 tasks autonomous; commits 9cf726b (feat role+draft hooks) / co-committed with eec6c72; 302/302 tests green (27 new: 8 rolePersistence + 7 draftBuffer + 10 chatStream + 2 useDraftBuffer wave-absorption); useRolePersistence + useDraftBuffer + useChatStream hooks shipped; zero new dependencies
 - 03-02-pure-primitives: ~3 min active; 2 tasks autonomous; commits 960d164 (feat types+reducer) + 19cc9f3 (co-committed wave-1 feat time+sourceTitles); 264/264 tests green (40 new: 20 reducer + 13 time + 7 sourceTitles); wire types + pure chat reducer (12 actions) + formatRelative + sourceTitles; zero new dependencies
 - 03-01-scaffold-ui-stack: ~4 min active; 2 tasks autonomous (no checkpoints); 2 commits 5465be6 (chore deps) / 19cc9f3 (feat shell) + pending docs metadata; 264/264 tests green (absorbed 20 tests from Wave-1 parallel Plan 02: time.ts formatRelative + sourceTitles); Tailwind v4 + 4 Radix packages + lucide-react + clsx + tailwind-merge + @vitejs/plugin-react@5.2.0 + RTL + jsdom + Playwright@1.59.1 + chromium installed; postcss.config.mjs + playwright.config.ts created; root app shell (layout/globals.css/providers/page) live
+- 05-01-auth-foundation: ~5.5 min active; 2 tasks autonomous (no checkpoints); 2 commits 8bf2998 (chore deps+.npmrc+env) / ca833e6 (feat detectHost+msalConfig+msalInstance) + pending docs metadata; 543/543 tests green (16 net-new attributable to 05-01: 5 env + 4 detectHost + 7 msalConfig; additional absorbed from parallel Plan 05-02 wave — ErrorCard token_expired tests); @azure/msal-browser@5.8.0 + @azure/msal-react@5.3.1 + @microsoft/teams-js@2.52.0 + jose@6.2.2 (prod) + mock-jwks@3.3.5 (dev) installed; `.npmrc node-linker=hoisted` created (Pitfall 10 pre-empt); EnvSchema.ENTRA_CLIENT_ID + ENTRA_TENANT_ID added with dev placeholder defaults; src/auth/ library (detectHost + msalConfig + msalInstance) with 11 Vitest tests; anti-pattern greps clean (supportsNestedAppAuth=0, microsoftTeams.getAuthToken=0); 1 Rule-1 auto-fix (MSAL v5 dropped navigateToLoginRequestUrl + storeAuthStateInCookie — removed, in-file comments document the drop, defaults equivalent)
 
 *Updated after each plan completion*
 
@@ -204,6 +207,19 @@ Decisions are logged in PROJECT.md Key Decisions table. Load-bearing decisions a
 | 5961a06 | Removed manual `id="source-panel-title"` on Dialog.Title AND `aria-labelledby="source-panel-title"` on Dialog.Content; added `data-source-panel="true"` on Dialog.Content for E2E scoping; migrated 3 Playwright specs from aria-labelledby locator to data-source-panel | Radix Dialog auto-wires Title↔Content via `useId()`-generated titleId registered through context. Manual id/aria-labelledby overrides bypass that registration, so Radix's "is a title rendered?" check fails and fires the dev-only "DialogContent requires a DialogTitle" accessibility warning. Plan 02's SUMMARY.md flagged this warning as "harmless" — that was incorrect. **Lesson: dev-overlay warnings are real contract violations, not noise. Never dismiss them during plan execution.** |
 | N/A | Favicon 404 noted as known-deferred | Out of Phase 4 scope; trivial follow-up (add `public/favicon.ico`). Not a regression, not Phase 4 work. |
 
+**Plan 05-01 decisions (auth-foundation):**
+
+| Plan  | Decision | Rationale |
+|-------|----------|-----------|
+| 05-01 | Accepted `@azure/msal-browser@5.8.0` over plan-locked `^5.6.3` | Minor-newer within major 5; plan explicitly permits minor drift ("if pnpm resolves a minor newer, accept it; if a major newer, STOP"). Verified via `node -e require('@azure/msal-browser').createNestablePublicClientApplication` that the NAA factory export is unchanged. |
+| 05-01 | Removed `navigateToLoginRequestUrl: true` from msalConfig (Rule 1 library-drift auto-fix) | MSAL v5's `BrowserAuthOptions` type dropped this field. Default behaviour post-handleRedirectPromise() restores the original request URL from state — functionally equivalent. In-file comment documents the removal. |
+| 05-01 | Removed `storeAuthStateInCookie: false` from msalConfig (Rule 1 library-drift auto-fix) | MSAL v5's `CacheOptions` type dropped this field — IE11-era cookie-fallback was deleted with MSAL v5's evergreen-only pivot. sessionStorage cache is sufficient for all supported browsers. In-file comment documents the removal. |
+| 05-01 | Added 3rd detectHost test case for `initialize()` REJECT path | Plan's 2-test pair only covered resolve + hang. The module's `.catch(() => 'browser')` handler exists for the reject case (e.g. ChannelError when Teams host is present but refuses). Locking this behaviour means Plan 05-04 AuthProvider can rely on detectHost never throwing. |
+| 05-01 | Added SSR-fallback `redirectUri === '/auth/redirect'` test | msalConfig must be safe to import from a server context (doesn't throw at module-load — only `getMsalInstance()` does). Test locks the `typeof window !== 'undefined'` branch so a future refactor cannot silently break SSR imports. |
+| 05-01 | Did NOT stage pre-existing Plan 05-02 residue edits (ErrorCard/types.ts) | When Task 2 began, those files already had uncommitted token_expired-9th-code edits from a parallel Plan 05-02 execution (commit `cf3a068` was made between my Task 1 and Task 2 commits). Per atomic-commit discipline across parallel waves — each plan's executor owns its own file edits. Left them in working tree for the Plan 05-02 continuation. |
+| 05-01 | ENTRA_CLIENT_ID / ENTRA_TENANT_ID are optional with dev-placeholder defaults (NOT required strings) | Phase 2/3/4 test suites load env without Entra values. Forcing them to stub ENTRA_* would touch 200+ existing test calls. Production `loadEnv()` paths still get real values via App Service Application Settings; Plan 03 middleware's JWT verification is the authoritative production guard (`'dev-only-do-not-use-in-prod'` as a tenant GUID would fail JWT issuer match immediately). |
+| 05-01 | EnvSchema extension uses z.string().min(1).optional().default(...) not z.string().default(...) | `.min(1)` rejects empty strings (test proves this), keeping the "if set, must be non-empty" contract. Bare `z.string().default(...)` would accept `ENTRA_CLIENT_ID=''` as valid, which is a silent misconfiguration hazard. |
+
 **Plan 04-02 decisions (source-panel-and-chip-integration):**
 
 | Plan  | Decision | Rationale |
@@ -306,15 +322,28 @@ None.
 - ~~**Expand .env handling docs before Phase 2 plan.**~~ CLOSED 2026-04-22 by Plan 02-01 Task 1.1 Step 1 — 182-line `docs/env-handling.md` covers runtime × env-file matrix, NODE_EXTRA_CA_CERTS shell-env requirement (nodejs/node #51426), App Service Application Settings mapping, troubleshooting, and .env.example aligned with EnvSchema.
 
 **Phase 5 forward-reference items (not blockers today; tracked so Phase 5 doesn't forget):**
-- `src/app/api/_middleware.ts` has a PHASE 5 REPLACEMENT POINT comment block identifying the exact substitution surface (read bearer → validate JWT vs Entra → enforce `env().ENTRA_TENANT_ID` allowlist → return jwt.oid/tid). Phase 5 must also add `ENTRA_TENANT_ID` to `src/config/env.ts` EnvSchema at that time.
+- `src/app/api/_middleware.ts` has a PHASE 5 REPLACEMENT POINT comment block identifying the exact substitution surface (read bearer → validate JWT vs Entra → enforce `env().ENTRA_TENANT_ID` allowlist → return jwt.oid/tid). Phase 5 Plan 05-01 ADDED `ENTRA_CLIENT_ID` + `ENTRA_TENANT_ID` to EnvSchema; Plan 05-03 wires the JWT validation.
 - `src/obs/logger.ts` has a PHASE 6 comment marking App Insights exporter layer as forward work on top of raw stdout JSON (STACK.md §8 OTel distro).
+
+**Phase 5 in-flight items (Plan 05-01 complete; downstream plans queued):**
+- Plan 05-02 (`/api/health` canary + `/access-denied` page + `token_expired` 9th error code) — parallel wave-2 plan; appears to have been started mid-execution (commit `cf3a068` present; three files still uncommitted in working tree: src/chat-ui/ErrorCard.tsx, src/chat-ui/__tests__/ErrorCard.test.tsx, src/chat-ui/types.ts). Plan 05-02 executor must fold the working-tree residue into its own commit flow.
+- Plan 05-03 (JWT validation middleware): jose@6.2.2 + mock-jwks@3.3.5 installed by Plan 05-01; ENTRA_CLIENT_ID + ENTRA_TENANT_ID available via `env()`; PHASE-5 REPLACEMENT POINT marker still in place at `src/app/api/_middleware.ts`. UNBLOCKED.
+- Plan 05-04 (AuthProvider + redirect bridge + signout): `@azure/msal-react@5.3.1` installed; `getMsalInstance()` singleton available at `src/auth/msalInstance.ts`; DEFAULT_SCOPES authoritative at `src/auth/msalConfig.ts`. UNBLOCKED but should wait on 05-03 (middleware must exist before AuthProvider wires against it).
+- Plan 05-05 (Teams manifest + CI/CD deploy): `.npmrc node-linker=hoisted` in place; Next.js standalone build will now include transitive deps correctly. UNBLOCKED but sequenced last.
+
+**Phase 5 concerns carried forward:**
+- MSAL v5's `navigateToLoginRequestUrl` equivalence depends on internal state-capture behaviour. Plan 05-04 E2E should assert that after a redirect sign-in the user lands back on their starting URL (not `/`). If broken, reinstate via `onRedirectNavigate` callback (still part of BrowserAuthOptions).
+- `getMsalInstance()` is async (`createNestablePublicClientApplication` returns a Promise). Plan 05-04 AuthProvider must `await` before passing the instance to `MsalProvider` — cannot import synchronously as `const pca = ...`.
 
 ## Session Continuity
 
-Last session: 2026-04-23 — Plan 04-04 complete. Commits: de22bb6 (fixtures+anchorIds) / 004ebf4 (SC#1/SC#2/SC#3 specs) / 0954be5 (SC#4/SC#5+Phase-3 regressions). 516 total unit tests green; 19 E2E specs green. SUMMARY at .planning/phases/04-source-panel-trust-and-fallback-ui/04-04-SUMMARY.md.
-Stopped at: Phase 4 COMPLETE (all 4 plans done).
+Last session: 2026-04-23 — Plan 05-01 auth-foundation complete. Commits: 8bf2998 (chore deps+.npmrc+env) / ca833e6 (feat detectHost+msalConfig+msalInstance) + pending docs metadata commit. 543 total unit tests green; 19 E2E specs green. SUMMARY at .planning/phases/05-sso-and-teams-delivery/05-01-SUMMARY.md. Non-05-01 commit `cf3a068 feat(05-02): add /api/health canary + /access-denied page` is a parallel Plan 05-02 partial execution (three files still uncommitted in working tree per Plan 05-02's own scope).
+Stopped at: Plan 05-01 COMPLETE.
 Resume signals (next session):
-  - Phase 5 — SSO & Teams Delivery (UNBLOCKED)
+  - Plan 05-02 health-access-denied-token-expired: executor to fold working-tree residue (ErrorCard/types.ts token_expired edits) into its own commits; may already be partially done
+  - Plan 05-03 middleware-jwt-validation: UNBLOCKED (jose + ENTRA_* env ready)
+  - Plan 05-04 auth-provider-redirect-bridge-signout: UNBLOCKED but sequence after 05-03
+  - Plan 05-05 teams-manifest-cicd-deploy: UNBLOCKED but sequence last (.npmrc ready)
 Resume file: None
 
 **Deferred work tracked for v1.1 (post-Phase 2):**
