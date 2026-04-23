@@ -1,4 +1,4 @@
-<source id="SNOW_FORM" title="ServiceNow Technical Knowledge Article Form" version="live" url="https://mmcnow.service-now.com/kb_view.do?sysparm_article=KB18801781">
+<source id="SNOW_FORM" title="ServiceNow Technical Knowledge Article Form" version="2026-04-23" url="https://mmcnow.service-now.com/kb_view.do?sysparm_article=KB18801781">
 
 <!-- section:required-fields -->
 ## Required Fields

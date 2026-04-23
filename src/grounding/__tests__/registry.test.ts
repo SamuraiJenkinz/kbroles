@@ -11,7 +11,9 @@ describe('REGISTRY — module load', () => {
   it('each source has the expected metadata', () => {
     expect(REGISTRY.KB0020882.version).toBe('9.0')
     expect(REGISTRY.KB0022991.version).toBe('13.0')
-    expect(REGISTRY.SNOW_FORM.version).toBe('live')
+    // SNOW_FORM version was 'live'; changed to a dated string in Plan 04-01
+    // so the freshness line can render 'Form schema YYYY-MM-DD' (TRST-01).
+    expect(REGISTRY.SNOW_FORM.version).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     expect(REGISTRY.KB0020882.url).toContain('KB0020882')
     expect(REGISTRY.KB0022991.url).toContain('KB0022991')
   })

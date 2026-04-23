@@ -110,3 +110,32 @@ describe('env — Phase-2 upstream resilience defaults (Plan 03 Task 3.2/3.3)', 
     expect(env.UPSTREAM_RETRY_MAX).toBe(0)
   })
 })
+
+describe('env — Phase-4 CONTENT_STEWARD_EMAIL (Plan 04-01 Task 2)', () => {
+  beforeEach(() => {
+    __resetEnvCacheForTests()
+  })
+
+  afterEach(() => {
+    __resetEnvCacheForTests()
+  })
+
+  it('defaults CONTENT_STEWARD_EMAIL to kb-knowledge-team@mmc.com when unset', () => {
+    const env = loadEnv(REQUIRED_VARS as unknown as NodeJS.ProcessEnv)
+    expect(env.CONTENT_STEWARD_EMAIL).toBe('kb-knowledge-team@mmc.com')
+  })
+
+  it('accepts a custom email address', () => {
+    const env = loadEnv({
+      ...REQUIRED_VARS,
+      CONTENT_STEWARD_EMAIL: 'steward@example.com',
+    } as unknown as NodeJS.ProcessEnv)
+    expect(env.CONTENT_STEWARD_EMAIL).toBe('steward@example.com')
+  })
+
+  it('rejects an email without @ (regex guard)', () => {
+    expect(() =>
+      loadEnv({ ...REQUIRED_VARS, CONTENT_STEWARD_EMAIL: 'not-an-email' } as unknown as NodeJS.ProcessEnv),
+    ).toThrow(/Invalid env/)
+  })
+})

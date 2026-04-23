@@ -49,6 +49,13 @@ const EnvSchema = z.object({
   UPSTREAM_RETRY_MAX:        z.coerce.number().int().min(0).max(5).optional().default(2),
   UPSTREAM_RETRY_BASE_MS:    z.coerce.number().int().min(100).optional().default(500),
   UPSTREAM_RETRY_JITTER_MS:  z.coerce.number().int().min(0).optional().default(250),
+
+  // Phase-4 Content Steward mailbox (FBK-04).
+  // Placeholder today — Phase 6 pilot prep names the real named mailbox.
+  // z.string().email() is too strict (accepts Exchange distribution list DNs
+  // only when formatted as user@domain.tld). Use z.string().min(1) with a
+  // runtime regex check that at least an @ appears.
+  CONTENT_STEWARD_EMAIL: z.string().min(1).regex(/@/).optional().default('kb-knowledge-team@mmc.com'),
 })
 
 export type Env = z.infer<typeof EnvSchema>
