@@ -21,10 +21,12 @@ test('SC #3 — Panel footer permalink + colour-coded badges + Pitfall 16/19 inv
   await page.getByRole('textbox').fill('resolution?')
   await page.keyboard.press('Enter')
 
-  // Scope panel selector via aria-labelledby (set by Plan 02 SourcePanel) —
+  // Scope panel selector via data-source-panel (set by SourcePanel) —
   // avoids strict-mode collision with AboutPopover / ChangeRoleDialog which
-  // also have role="dialog".
-  const panel = page.locator('[aria-labelledby="source-panel-title"]')
+  // also have role="dialog". Radix auto-wires Dialog.Title↔Dialog.Content;
+  // overriding id/aria-labelledby would break the wiring and fire the
+  // "DialogContent requires a DialogTitle" dev warning.
+  const panel = page.locator('[data-source-panel="true"]')
   await expect(panel).toBeVisible()
 
   // SC #3 — Footer permalink

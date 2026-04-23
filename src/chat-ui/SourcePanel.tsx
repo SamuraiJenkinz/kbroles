@@ -58,7 +58,7 @@ export function SourcePanel({
         {/* Mobile-only overlay (lg:hidden); desktop uses no overlay — chat stays interactive */}
         <Dialog.Overlay className="fixed inset-0 z-40 bg-black/30 lg:hidden" />
         <Dialog.Content
-          aria-labelledby="source-panel-title"
+          data-source-panel="true"
           aria-describedby={undefined}
           onOpenAutoFocus={(e) => e.preventDefault()}   // do NOT steal focus from chat input
           className={cn(
@@ -83,7 +83,7 @@ export function SourcePanel({
                 {loaded?.source_id}
               </span>
             )}
-            <Dialog.Title id="source-panel-title" className="flex-1 truncate text-sm font-semibold">
+            <Dialog.Title className="flex-1 truncate text-sm font-semibold">
               {content?.title ?? loaded?.section_id ?? 'Source'}
             </Dialog.Title>
             {content && (

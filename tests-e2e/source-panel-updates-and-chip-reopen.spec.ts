@@ -39,10 +39,12 @@ test('SC #2 — Panel updates on follow-up citation; chip click re-opens for old
   await page.keyboard.press('Enter')
   await expect(page.getByText(/See the Resolution section/)).toBeVisible()
 
-  // Scope panel selector via aria-labelledby (set by Plan 02 SourcePanel) —
+  // Scope panel selector via data-source-panel (set by SourcePanel) —
   // avoids strict-mode collision with AboutPopover / ChangeRoleDialog which
-  // also have role="dialog".
-  const panel = page.locator('[aria-labelledby="source-panel-title"]')
+  // also have role="dialog". Radix auto-wires Dialog.Title↔Dialog.Content;
+  // overriding id/aria-labelledby would break the wiring and fire the
+  // "DialogContent requires a DialogTitle" dev warning.
+  const panel = page.locator('[data-source-panel="true"]')
   // The Dialog.Title also shows the section name, so use the body section id to
   // confirm the first source loaded without strict-mode collision from two h2s.
   await expect(panel.locator('#resolution-field-software')).toBeVisible()

@@ -25,11 +25,12 @@ test('SC #1 — Author "Resolution field" → panel auto-opens to KB0020882 with
   await expect(page.getByText(/Configuration Item, Assignment group/)).toBeVisible()
 
   // Panel auto-opened. Scope to the SourcePanel specifically via the
-  // aria-labelledby contract from Plan 02 — NOT `getByRole('dialog')` alone,
-  // which would also match Radix Popover (AboutPopover) and ChangeRoleDialog
-  // and fail in strict mode. Plan 02 sets `aria-labelledby="source-panel-title"`
-  // on Dialog.Content and `id="source-panel-title"` on Dialog.Title.
-  const panel = page.locator('[aria-labelledby="source-panel-title"]')
+  // data-source-panel attribute — NOT `getByRole('dialog')` alone, which
+  // would also match Radix Popover (AboutPopover) and ChangeRoleDialog and
+  // fail in strict mode. Radix auto-wires Dialog.Title↔Dialog.Content via
+  // its own generated titleId; overriding id/aria-labelledby breaks that
+  // wiring and fires "DialogContent requires a DialogTitle" in dev.
+  const panel = page.locator('[data-source-panel="true"]')
   await expect(panel).toBeVisible()
 
   // Header badge shows KB0020882 with blue colour — Pitfall 16: both class AND icon.
