@@ -98,7 +98,7 @@ export type ChatAction =
   | { type: 'assistant/delta'; id: string; text: string }
   | { type: 'assistant/citations'; id: string; citations: Citation[] }
   | { type: 'assistant/done'; id: string }
-  | { type: 'assistant/fallback'; id: string; text: string }
+  | { type: 'assistant/fallback'; id: string; text: string; requestId: string }
   | { type: 'assistant/error'; id: string; code: ErrorCode; requestId: string }
   | { type: 'assistant/stoppedByUser'; id: string }
   | { type: 'assistant/retry'; id: string }

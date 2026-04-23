@@ -111,13 +111,29 @@ describe('fallback path', () => {
       sendUser(),
       startAssistant(),
       { type: 'assistant/delta', id: ASST_ID, text: 'partial...' },
-      { type: 'assistant/fallback', id: ASST_ID, text: FALLBACK_TEXT },
+      { type: 'assistant/fallback', id: ASST_ID, text: FALLBACK_TEXT, requestId: 'req-fallback-1' },
     ])
     const asst = s.messages.find(m => m.id === ASST_ID)!
     if (asst.kind === 'assistant') {
       expect(asst.text).toBe(FALLBACK_TEXT)
       expect(asst.citations).toEqual([])
       expect(asst.state).toBe('fallback')
+    }
+    expect(s.inFlightId).toBeNull()
+  })
+
+  it('assistant/fallback stores requestId on the message (Plan 04-03 wiring)', () => {
+    const s = seq([
+      sendUser(),
+      startAssistant(),
+      { type: 'assistant/fallback', id: ASST_ID, text: 'fallback text', requestId: 'req-xyz' },
+    ])
+    const asst = s.messages.find(m => m.id === ASST_ID)!
+    expect(asst.kind).toBe('assistant')
+    if (asst.kind === 'assistant') {
+      expect(asst.state).toBe('fallback')
+      expect(asst.text).toBe('fallback text')
+      expect(asst.requestId).toBe('req-xyz')
     }
     expect(s.inFlightId).toBeNull()
   })

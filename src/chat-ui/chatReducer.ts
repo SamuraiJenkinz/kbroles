@@ -109,7 +109,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case 'assistant/fallback': {
       const next = updateMessage(state, action.id, m => {
         if (m.kind !== 'assistant') return m
-        return { ...m, text: action.text, citations: [], state: 'fallback' }
+        return { ...m, text: action.text, citations: [], state: 'fallback', requestId: action.requestId }
       })
       return { ...next, inFlightId: null }
     }

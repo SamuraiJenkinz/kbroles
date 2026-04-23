@@ -81,7 +81,7 @@ export function ChatSurface({
         asstIdRef.current = null
         break
       case 'fallback':
-        dispatch({ type: 'assistant/fallback', id, text: ev.text })
+        dispatch({ type: 'assistant/fallback', id, text: ev.text, requestId })
         asstIdRef.current = null
         break
       case 'error':
