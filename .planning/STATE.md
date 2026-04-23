@@ -12,11 +12,11 @@ See: .planning/ROADMAP.md (6 phases, standard depth)
 ## Current Position
 
 Phase: 4 of 6 (Source Panel, Trust & Fallback UI) — In Progress
-Plan: 1 (source-exposure-and-badge-constants) — COMPLETE
-Status: Plan 04-01 complete. 410 unit tests green (355 pre-existing + 55 new). `pnpm typecheck` clean. SOURCE_BADGES canonical map, /api/sources, /api/config, CONTENT_STEWARD_EMAIL env, SNOW_FORM version dated. Plans 02–04 unblocked.
-Last activity: 2026-04-23 — Plan 04-01 complete. Commits: 2a54877 (feat badges+titles) / a8c503e (feat env+routes+version).
+Plan: 2 (source-panel-and-chip-integration) — COMPLETE
+Status: Plan 04-02 complete. 462 unit tests green (410 pre-existing + 52 new). `pnpm typecheck` clean. SourcePanel (Radix Dialog desktop pane + mobile drawer), usePanelState, useSourceContent, renderSectionMarkdown, citation chip upgrade, ChatSurface wiring all shipped. Plans 03–04 unblocked.
+Last activity: 2026-04-23 — Plan 04-02 complete. Commits: d529cfd (hooks+renderer) / a567e62 (SourcePanel+CSS) / 0a4ef3d (chip+ChatSurface).
 
-Progress: [█████████████████████████░░░░░░░] Phase 1–3 of 6 complete; Phase 4 Plan 1/4 complete
+Progress: [██████████████████████████░░░░░░] Phase 1–3 of 6 complete; Phase 4 Plan 2/4 complete
 
 ## Performance Metrics
 
@@ -174,6 +174,18 @@ Decisions are logged in PROJECT.md Key Decisions table. Load-bearing decisions a
 | 04-01 | /api/config test mocks env() via vi.mock('@/config/env') | Route calls env() which validates LLM_* vars absent from test env; mock returns controlled Env object |
 | 04-01 | sourceTitles.ts Phase-3 legacy keys preserved | UTIL-01 tests reference 'resolution', 'form-fields' etc; removing would break 7 existing tests |
 
+**Plan 04-02 decisions (source-panel-and-chip-integration):**
+
+| Plan  | Decision | Rationale |
+|-------|----------|-----------|
+| 04-02 | `ComponentType<any>` for ICONS map in SourcePanel + Message | lucide's `ForwardRefExoticComponent` doesn't satisfy `ComponentType<{ aria-hidden?: boolean }>` — `any` is the pragmatic bypass without altering lucide types |
+| 04-02 | `scrollIntoView` guarded with `typeof` in SourcePanel | jsdom lacks scrollIntoView; guard preserves production scroll + CSS animation without crashing tests |
+| 04-02 | `aria-describedby={undefined}` on Dialog.Content | Suppresses Radix development-mode "Missing Description" warning; semantically correct — panel header IS the description |
+| 04-02 | `getAllByText` / `getAllByRole('dialog')` in tests | Panel KB ID appears in both chip button text and panel header badge; ChangeRoleDialog + SourcePanel both carry role=dialog |
+| 04-02 | defaultHandler in ChatSurface.test extended with /api/sources | ChatSurface auto-opens panel on first citation → useSourceContent fetches /api/sources; without handler, existing tests reject with "Unexpected fetch" |
+| 04-02 | Desktop pane `lg:w-[40vw]` confirmed (supersedes REQUIREMENTS.md ~256px) | CONTEXT.md §PANE-01 authoritative: 40vw persistent pane on >=1024px; design decision NOT a regression |
+| 04-02 | Citation chip existing test updated to getByRole('button') | Chip is now a `<button>` not a text span; getByText(/KB../) fails on multiple matches (chip + panel badge) |
+
 **Plan 03-06 decisions (e2e-success-criteria):**
 
 | Plan  | Decision | Rationale |
@@ -269,10 +281,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-23 — Plan 04-01 complete. Commits: 2a54877 (feat badges+titles) / a8c503e (feat env+routes+version) + pending docs metadata. 410 total unit tests green. SUMMARY at .planning/phases/04-source-panel-trust-and-fallback-ui/04-01-SUMMARY.md.
-Stopped at: Phase 4 Plan 1 complete.
+Last session: 2026-04-23 — Plan 04-02 complete. Commits: d529cfd (hooks+renderer) / a567e62 (SourcePanel+CSS) / 0a4ef3d (chip+ChatSurface) + pending docs metadata. 462 total unit tests green. SUMMARY at .planning/phases/04-source-panel-trust-and-fallback-ui/04-02-SUMMARY.md.
+Stopped at: Phase 4 Plan 2 complete.
 Resume signals (next session):
-  - Phase 4 Plan 2 — source-panel-and-chip-integration
+  - Phase 4 Plan 3 — fallback-card-trust-header-about-tooltip
 Resume file: None
 
 **Deferred work tracked for v1.1 (post-Phase 2):**
