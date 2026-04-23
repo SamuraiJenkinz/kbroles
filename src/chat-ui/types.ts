@@ -39,14 +39,12 @@ export type ErrorCode =
   | 'upstream_5xx'
   | 'schema_reject_after_retry'
   | 'internal'
-  | 'token_expired'  // Phase-5 9th code (CONTEXT §Auth boundary). Emitted when
-                     //   the Entra JWT attached to an in-flight /api/chat
-                     //   request has expired mid-stream (Plan 05-03 wires the
-                     //   server side). Frontend maps this to a "Sign back in"
-                     //   CTA that triggers acquireTokenSilent → fallback to
-                     //   acquireTokenRedirect (Plan 05-04 re-wires the
-                     //   ChatSurface call-site; ErrorCard stays onRetry-bound
-                     //   in Plan 05-02).
+  | 'token_expired'  // Phase 5.1 — emitted when the iron-session cookie has
+                     //   expired (or never existed) on a /api/chat POST.
+                     //   Wire code preserved from Phase 5 so ErrorCard +
+                     //   useChatStream branching stay stable; semantics
+                     //   changed from "JWT expired" to "session expired".
+                     //   Retry path: ChatSurface redirects to /api/login.
 
 // ─── SseEvent  (contract §3) ─────────────────────────────────────────────────
 

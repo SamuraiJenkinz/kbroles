@@ -1,6 +1,5 @@
 'use client'
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { chatReducer, initialChatState } from './chatReducer'
 import { useChatStream } from './useChatStream'
 import { useDraftBuffer } from './useDraftBuffer'
@@ -16,7 +15,6 @@ import { InputBar } from './InputBar'
 import { ChangeRoleDialog } from './ChangeRoleDialog'
 import { SourcePanel } from './SourcePanel'
 import { cn } from './cn'
-import { acquireToken, signOut as msalSignOut } from '@/auth/tokenProvider'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -59,7 +57,6 @@ export function ChatSurface({
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const [changeRoleOpen, setChangeRoleOpen] = useState(false)
   const [signOutConfirmOpen, setSignOutConfirmOpen] = useState(false)
-  const router = useRouter()
 
   // ── Panel state (Phase 4 — source panel open/closed + loaded source) ────────
   const panel = usePanelState()
@@ -100,20 +97,13 @@ export function ChatSurface({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panel.autoOpenOnFirstCitation])
 
-  // ── Plan 05-04 Edit C: acquireToken DI for useChatStream Bearer header ─────
-  // ChatSurface lives inside MsalProvider (via root Providers), so a top-level
-  // import of tokenProvider is safe here — that's why the DI boundary is at
-  // the hook, not this file.
-  const boundAcquireToken = useCallback(() => acquireToken(null), [])
-  const handleAccessDenied = useCallback(() => {
-    router.replace('/access-denied')
-  }, [router])
-
-  const { send, stop, isStreaming } = useChatStream(handleEvent, {
-    acquireToken: boundAcquireToken,
-    onTokenExpired: () => { /* observe only; retry remains user-initiated via ErrorCard */ },
-    onAccessDenied: handleAccessDenied,
-  })
+  // ── Plan 05.1-05: BFF session-cookie auth ──────────────────────────────────
+  // useChatStream now uses `credentials: 'include'` on every /api/chat POST;
+  // the iron-session cookie is sent automatically. No acquireToken DI, no
+  // Bearer header, no onAccessDenied callback (pre-stream 403 still renders
+  // an error card, but AuthProvider's /api/me is the canonical gate for
+  // /access-denied routing).
+  const { send, stop, isStreaming } = useChatStream(handleEvent)
 
   // ── Send a message (chip click or freeform) ────────────────────────────────
   const dispatchSend = useCallback(
@@ -158,18 +148,30 @@ export function ChatSurface({
     panel.resetSession()                      // 7. re-arm auto-open for next role session
   }, [stop, onChangeRole, clearDraft, panel.resetSession])
 
-  // ── Plan 05-04 Edit A: sign-out flow ───────────────────────────────────────
+  // ── Plan 05.1-05: sign-out flow ────────────────────────────────────────────
   // If there's a draft OR an in-flight stream, prompt a confirm dialog first.
   // On confirm: stop stream, clear in-memory chat state + draft + role, then
-  // invoke tokenProvider.signOut() (→ msalInstance.logoutRedirect).
+  // fetch /api/logout (clears the iron-session cookie server-side) and hard
+  // navigate to / — AuthProvider will re-fetch /api/me, see 401, and the
+  // ChatPage useEffect will redirect to /api/login for a fresh sign-in.
+  const performSignOut = useCallback(async () => {
+    try {
+      await fetch('/api/logout', { credentials: 'include' })
+    } catch {
+      // Best effort; even if the fetch fails, the redirect below lands the
+      // user at / where AuthProvider → /api/me → 401 → /api/login.
+    }
+    window.location.href = '/'
+  }, [])
+
   const handleSignOutRequest = useCallback(() => {
     const dirty = draft.trim().length > 0 || state.inFlightId != null
     if (dirty) {
       setSignOutConfirmOpen(true)
       return
     }
-    void msalSignOut()
-  }, [draft, state.inFlightId])
+    void performSignOut()
+  }, [draft, state.inFlightId, performSignOut])
 
   const handleConfirmSignOut = useCallback(() => {
     stop()                                    // abort in-flight stream
@@ -177,13 +179,13 @@ export function ChatSurface({
     asstIdRef.current = null                  // prevent stale dispatch
     setSignOutConfirmOpen(false)              // close dialog
     clearDraft()                              // clear sessionStorage draft
-    // Clear role BEFORE logoutRedirect — setRole(null) is synchronous; once
-    // logout navigates away the user returns to / in an unauthenticated state
-    // and the ChatPage should show RoleSelect, not the previous role.
+    // Clear role BEFORE logout — setRole(null) is synchronous; once the
+    // logout redirect returns the user to / in an unauthenticated state,
+    // ChatPage should show RoleSelect, not the previous role.
     onChangeRole()
     panel.resetSession()
-    void msalSignOut()
-  }, [stop, clearDraft, onChangeRole, panel.resetSession])
+    void performSignOut()
+  }, [stop, clearDraft, onChangeRole, panel.resetSession, performSignOut])
 
   // ── Stop (inline stop button) ──────────────────────────────────────────────
   const handleStop = useCallback(() => {
@@ -195,11 +197,13 @@ export function ChatSurface({
   }, [state.inFlightId, stop])
 
   // ── Retry (CHAT-07 — reconstruct last user turn) ───────────────────────────
-  // Plan 05-04 Edit D: when the retried bubble's errorCode === 'token_expired',
-  // await acquireToken(null) FIRST so the replay carries a freshly acquired
-  // Bearer. All other errorCodes keep the existing synchronous retry.
+  // Plan 05.1-05: token_expired means the iron-session cookie has timed out
+  // server-side. The only recovery is to re-authenticate; /api/login 302s to
+  // Entra and back to /, so a hard navigation is correct here (Next's router
+  // would treat /api/login as an internal page and swallow the redirect).
+  // All other errorCodes replay the last send with its original payload.
   const handleRetry = useCallback(
-    async (errorBubbleId: string) => {
+    (errorBubbleId: string) => {
       const idx = state.messages.findIndex(m => m.id === errorBubbleId)
       if (idx <= 0) return
       const userMsg = state.messages[idx - 1]
@@ -209,13 +213,8 @@ export function ChatSurface({
         errorMsg.kind === 'assistant' && errorMsg.errorCode === 'token_expired'
 
       if (isTokenExpired) {
-        try {
-          await acquireToken(null)
-        } catch {
-          // Silent + interactive both failed; bail out so the error card
-          // stays visible and the user can retry (which re-invokes this path).
-          return
-        }
+        window.location.href = '/api/login'
+        return
       }
 
       dispatch({ type: 'assistant/retry', id: errorBubbleId })  // remove failed bubble
@@ -277,7 +276,7 @@ export function ChatSurface({
               contentStewardEmail={config?.contentStewardEmail ?? 'kb-knowledge-team@mmc.com'}
               onCopy={() => { /* copy handled internally by AssistantControls */ }}
               onFeedback={handleFeedback}
-              onRetry={(id) => { void handleRetry(id) }}   // consumes Plan 04's onRetry prop (no mutation)
+              onRetry={handleRetry}   // consumes Plan 04's onRetry prop (no mutation)
               onChipClick={panel.chipClick}
               activeSource={panel.loaded}
             />

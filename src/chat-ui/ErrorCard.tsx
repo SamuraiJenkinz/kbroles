@@ -25,10 +25,11 @@ export function ErrorCard({
   const [open, setOpen] = useState(false)
   const isRateLimited = errorCode === 'internal' && (message ?? '').startsWith('rate_limited:')
   const title = isRateLimited ? 'The assistant is busy.' : (TITLE[errorCode] ?? TITLE.internal)
-  // Phase-5 token_expired branches: swap primary CTA label + sub-copy.
-  // Plan 05-04 re-wires onRetry at the ChatSurface call-site to invoke MSAL
-  // acquireTokenSilent → fallback acquireTokenRedirect; from the card's
-  // perspective this is purely a copy change (same button, same onClick).
+  // token_expired branches: swap primary CTA label + sub-copy.
+  // Phase 5.1: token_expired means the iron-session cookie has expired. The
+  // onRetry handler (wired in ChatSurface) redirects to /api/login which 302s
+  // to Entra for re-auth; from this card's perspective it's still the same
+  // button, same onClick contract.
   const primaryLabel = errorCode === 'token_expired' ? 'Sign back in' : 'Retry'
   const subCopy =
     errorCode === 'token_expired'

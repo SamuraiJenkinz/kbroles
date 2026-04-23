@@ -4,44 +4,28 @@ import { useCallback, useRef, useState } from 'react'
 import type { Role, SseEvent } from './types'
 
 /**
- * Options for useChatStream. All new fields are OPTIONAL by design so that
- * existing Phase-3 unit tests (which omit them) continue to pass without
- * MSAL mocks.
+ * Pitfall 4 guard: role is a parameter of send() on every call. Do not
+ * promote it to hook state.
  *
- * Plan 05-04 Task 2 Edit A — dependency-injected token provider.
- * Plan 05-04 Task 2 Edit B — pre-stream 401/403 branching for token_expired
- * / unauthorized / access_denied.
+ * Phase 5.1 — BFF session-cookie auth. The hook makes plain `fetch('/api/chat',
+ * { credentials: 'include' })` calls; the iron-session cookie is sent
+ * automatically by the browser. No Authorization header, no token
+ * acquisition. Pre-stream 401/403 branching PRESERVED — server emits
+ * {error:'token_expired'}/'unauthorized'/'access_denied' JSON bodies on
+ * the pre-stream response, hook dispatches assistant/error with the
+ * matching code. Caller (ChatSurface) handles navigation for
+ * access_denied via router (see ChatPage) — this hook no longer needs the
+ * onAccessDenied callback.
  *
- * IMPORTANT: This file does NOT top-level-import @/auth/tokenProvider. Static
- * import would force MSAL into every Phase-3 useChatStream test. ChatSurface
- * (which lives inside MsalProvider) supplies the bound callback.
+ * Options type retained (empty for now) so callers that pass `{}` as a
+ * placeholder compile cleanly. If future non-auth options land they belong
+ * here.
  */
-export type UseChatStreamOptions = {
-  /**
-   * Bound `tokenProvider.acquireToken` callback. Invoked before each
-   * /api/chat fetch; if it returns a non-empty string, the hook attaches
-   * `Authorization: Bearer <token>` to the request.
-   */
-  acquireToken?: () => Promise<string | null>
-  /**
-   * Fired AFTER a pre-stream 401 with `{error:"token_expired"}` body has been
-   * dispatched as assistant/error. Lets ChatSurface proactively trigger a
-   * silent refresh if desired. Retry remains user-initiated through the
-   * ErrorCard's "Sign back in" button (ChatSurface re-invokes acquireToken
-   * before replaying the send).
-   */
-  onTokenExpired?: () => void
-  /**
-   * Fired AFTER a pre-stream 403 with `{error:"access_denied"}` body. Lets
-   * ChatSurface perform `router.replace('/access-denied')`. No error action
-   * is dispatched for access_denied — the caller owns navigation.
-   */
-  onAccessDenied?: () => void
-}
+export type UseChatStreamOptions = Record<string, never>
 
 export function useChatStream(
   onEvent: (ev: SseEvent, requestId: string) => void,
-  opts: UseChatStreamOptions = {},
+  _opts: UseChatStreamOptions = {},
 ) {
   const abortRef = useRef<AbortController | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
@@ -61,51 +45,34 @@ export function useChatStream(
 
       let requestId = 'unknown'
       try {
-        // ─── Plan 05-04 Edit A: attach Bearer token via injected callback ──
-        let authHeader: Record<string, string> = {}
-        if (opts.acquireToken) {
-          try {
-            const token = await opts.acquireToken()
-            if (token) authHeader = { Authorization: `Bearer ${token}` }
-          } catch {
-            // Silent + interactive both failed. Surface via the existing
-            // error path with code:'internal' + sentinel message so ErrorCard
-            // renders. The user can retry, which re-invokes acquireToken and
-            // follows the interactive path again.
-            onEvent(
-              { type: 'error', code: 'internal', message: 'acquire_token_failed' },
-              requestId,
-            )
-            setIsStreaming(false)
-            abortRef.current = null
-            return
-          }
-        }
-
         const res = await fetch('/api/chat', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...authHeader },
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',  // Phase 5.1 — send iron-session cookie
           body: JSON.stringify({ role, messages }),
           signal: ctrl.signal,
         })
         requestId = res.headers.get('X-Request-Id') ?? 'unknown'
 
-        // ─── Plan 05-04 Edit B: pre-stream 401/403 branching ───────────────
+        // ─── Pre-stream 401/403 branching (Phase 5.1) ──────────────────────
         // Auth failures are delivered as HTTP status + JSON body (NOT SSE
-        // frames). Plan 05-03 pre-stream-401s on token_expired/unauthorized
+        // frames). /api/chat pre-stream-401s on token_expired/unauthorized
         // and pre-stream-403s on access_denied — the SSE stream is never
         // started for auth failures. Branch BEFORE entering the reader.
+        //
+        // Semantics changed from Phase 5: "token_expired" now means the
+        // iron-session cookie has expired (no more JWT-in-Authorization).
+        // Wire code preserved so ErrorCard + chatReducer stay stable.
         if (res.status === 401) {
           const body = await res.json().catch(() => ({} as { error?: string }))
           if (body.error === 'token_expired') {
             onEvent({ type: 'error', code: 'token_expired', message: 'token_expired' }, requestId)
-            opts.onTokenExpired?.()
             return
           }
           // body.error === 'unauthorized' or any other 401: wire as internal
-          // with a sentinel message so ErrorCard still renders. Plan 05-02
-          // did not add 'unauthorized' to ErrorCode — we keep the diff small
-          // and rely on the 'internal' fallback title.
+          // with a sentinel message so ErrorCard still renders. ErrorCode
+          // does not include 'unauthorized' — we keep the diff small and
+          // rely on the 'internal' fallback title.
           onEvent(
             { type: 'error', code: 'internal', message: body.error ?? 'unauthorized' },
             requestId,
@@ -114,12 +81,12 @@ export function useChatStream(
         }
         if (res.status === 403) {
           const body = await res.json().catch(() => ({} as { error?: string }))
-          if (body.error === 'access_denied') {
-            // Access denied — caller navigates to /access-denied. No error
-            // dispatch because the user leaves the chat surface entirely.
-            opts.onAccessDenied?.()
-            return
-          }
+          // access_denied: surface via the existing error path with an
+          // 'internal' sentinel. ChatPage's useAuth() forbidden branch is
+          // the canonical /access-denied route; an in-flight 403 during
+          // chat means the user's roles changed server-side between
+          // AuthProvider's /api/me resolve and the send. We render an
+          // error card so the user isn't silently ejected mid-stream.
           onEvent(
             { type: 'error', code: 'internal', message: body.error ?? `http_${res.status}` },
             requestId,
@@ -182,7 +149,7 @@ export function useChatStream(
         abortRef.current = null
       }
     },
-    [stop, onEvent, opts],
+    [stop, onEvent],
   )
 
   return { send, stop, isStreaming }

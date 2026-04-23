@@ -48,7 +48,8 @@ describe('useChatStream', () => {
       '{"type":"citations","citations":[]}',
       '{"type":"done","can_answer":true,"validator_flips":0}',
     ]
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(makeSseResponse(frames, 'test-req-1')))
+    const fetchSpy = vi.fn().mockResolvedValueOnce(makeSseResponse(frames, 'test-req-1'))
+    vi.stubGlobal('fetch', fetchSpy)
 
     const { result } = renderHook(() => useChatStream(onEvent))
 
@@ -67,6 +68,16 @@ describe('useChatStream', () => {
     }
     // isStreaming should be false after done settles
     expect(result.current.isStreaming).toBe(false)
+
+    // Phase 5.1: fetch is called with credentials:'include' so the browser
+    // sends the iron-session cookie automatically. No Authorization header.
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/chat',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+    const init = fetchSpy.mock.calls[0][1] as RequestInit
+    const headers = init.headers as Record<string, string>
+    expect(headers).not.toHaveProperty('Authorization')
   })
 
   // ─── Fallback terminal ────────────────────────────────────────────────────────
@@ -319,6 +330,88 @@ describe('useChatStream', () => {
     resolveFirstFetch?.(makeSseResponse([], 'cleanup'))
     await Promise.allSettled([firstSend])
   }, 10000)
+
+  // ─── Phase 5.1: pre-stream 401 token_expired branch ───────────────────────
+
+  it('pre-stream 401 {error:token_expired} → dispatches error with code token_expired', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'token_expired' }), {
+        status: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'te-req-1',
+        },
+      }),
+    ))
+
+    const { result } = renderHook(() => useChatStream(onEvent))
+    await act(async () => {
+      await result.current.send('consumer', [{ role: 'user', content: 'test' }])
+    })
+
+    expect(onEvent).toHaveBeenCalledTimes(1)
+    expect(onEvent.mock.calls[0][0]).toEqual({
+      type: 'error',
+      code: 'token_expired',
+      message: 'token_expired',
+    })
+    expect(onEvent.mock.calls[0][1]).toBe('te-req-1')
+    expect(result.current.isStreaming).toBe(false)
+  })
+
+  // ─── Phase 5.1: pre-stream 401 with unknown error body → internal ─────────
+
+  it('pre-stream 401 {error:unauthorized} → dispatches internal error with body.error message', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'unauthorized' }), {
+        status: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'ua-req-1',
+        },
+      }),
+    ))
+
+    const { result } = renderHook(() => useChatStream(onEvent))
+    await act(async () => {
+      await result.current.send('consumer', [{ role: 'user', content: 'test' }])
+    })
+
+    expect(onEvent).toHaveBeenCalledTimes(1)
+    expect(onEvent.mock.calls[0][0]).toEqual({
+      type: 'error',
+      code: 'internal',
+      message: 'unauthorized',
+    })
+  })
+
+  // ─── Phase 5.1: pre-stream 403 {error:access_denied} → internal ───────────
+
+  it('pre-stream 403 {error:access_denied} → dispatches internal error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'access_denied' }), {
+        status: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'ad-req-1',
+        },
+      }),
+    ))
+
+    const { result } = renderHook(() => useChatStream(onEvent))
+    await act(async () => {
+      await result.current.send('consumer', [{ role: 'user', content: 'test' }])
+    })
+
+    // Plan 05.1-05: 403 always surfaces an error card (AuthProvider is the
+    // canonical forbidden gate; this is the in-flight fallback).
+    expect(onEvent).toHaveBeenCalledTimes(1)
+    expect(onEvent.mock.calls[0][0]).toMatchObject({
+      type: 'error',
+      code: 'internal',
+      message: 'access_denied',
+    })
+  })
 
   // ─── isStreaming flag lifecycle ───────────────────────────────────────────────
 

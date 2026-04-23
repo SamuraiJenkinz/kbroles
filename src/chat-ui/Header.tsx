@@ -43,9 +43,11 @@ export function Header({
   onChangeRole: () => void
   onNewConversation: () => void
   /**
-   * Optional for Phase-3/4 unit tests that pre-date Plan 05-04. Plan 05-04
-   * ChatSurface always supplies this; it triggers the sign-out confirm-dialog
-   * flow when chat state is dirty, or the direct logoutRedirect when clean.
+   * Optional for Phase-3/4 unit tests that pre-date Plan 05-04. ChatSurface
+   * always supplies this; it triggers the sign-out confirm-dialog flow when
+   * chat state is dirty, or a direct sign-out when clean. Phase 5.1: the
+   * handler now performs fetch('/api/logout') + window.location.href='/'
+   * (iron-session cookie clear) instead of MSAL logoutRedirect.
    */
   onSignOut?: () => void
 }) {

@@ -5,51 +5,50 @@
  * Plan 04-03: Header now includes AboutPopover (Radix Popover) which requires
  * ResizeObserver — polyfilled below since jsdom doesn't implement it.
  *
- * Plan 05-04: ChatSurface + ChatPage now depend on MSAL React hooks,
- * next/navigation useRouter, and @/auth/tokenProvider. All mocked at
- * module-load via vi.mock() so existing Phase-3/4 behavioural coverage
- * stays assertion-stable.
+ * Plan 05.1-05: BFF session-cookie auth. ChatSurface and ChatPage now depend
+ * on useAuth() from @/chat-ui/AuthProvider instead of MSAL React hooks +
+ * tokenProvider. AuthProvider is mocked at module-load to return a stable
+ * 'authenticated' state so existing behavioural coverage stays assertion
+ * -stable; next/navigation is still mocked for ChatPage's forbidden branch
+ * (routerReplace).
  */
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as Tooltip from '@radix-ui/react-tooltip'
 
-// ─── Hoisted mock state (Plan 05-04) ─────────────────────────────────────────
+// ─── Hoisted mock state (Plan 05.1-05) ───────────────────────────────────────
 // vi.hoisted so the vi.mock factories below can reference the same instances.
 const mocks = vi.hoisted(() => ({
   routerReplace: vi.fn(),
   routerPush: vi.fn(),
-  acquireToken: vi.fn<(account?: unknown) => Promise<string>>(),
-  signOut: vi.fn<() => Promise<void>>(),
-  msalAccounts: [
-    {
-      homeAccountId: 'home-id',
-      environment: 'login.windows.net',
-      tenantId: 'test-tenant',
-      username: 'test@mmc.com',
-      localAccountId: 'local-id',
-      idTokenClaims: { tid: 'test-tenant', oid: 'local-id', preferred_username: 'test@mmc.com' },
-    },
-  ],
-  inProgress: 'none' as string,
-  isAuthenticated: true,
+  authStatus: 'authenticated' as
+    | 'loading'
+    | 'authenticated'
+    | 'unauthenticated'
+    | 'forbidden'
+    | 'error',
 }))
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: mocks.routerReplace, push: mocks.routerPush }),
 }))
 
-vi.mock('@azure/msal-react', () => ({
-  useIsAuthenticated: () => mocks.isAuthenticated,
-  useMsal: () => ({ accounts: mocks.msalAccounts, inProgress: mocks.inProgress, instance: {} }),
-  useAccount: (account?: unknown) => account ?? mocks.msalAccounts[0],
-  MsalProvider: ({ children }: { children: React.ReactNode }) => children,
-}))
-
-vi.mock('@/auth/tokenProvider', () => ({
-  acquireToken: (account?: unknown) => mocks.acquireToken(account),
-  signOut: () => mocks.signOut(),
+vi.mock('@/chat-ui/AuthProvider', () => ({
+  useAuth: () => ({
+    status: mocks.authStatus,
+    user:
+      mocks.authStatus === 'authenticated'
+        ? {
+            displayName: 'Test User',
+            email: 'test@mmc.com',
+            oid: 'oid-test',
+            roles: ['KbAssistant.User'],
+          }
+        : null,
+    upn: null,
+  }),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }))
 
 import { ChatSurface } from '../ChatSurface'
@@ -197,15 +196,10 @@ beforeEach(() => {
   // The popover's <li> bullets would be counted as listitems by queryAllByRole('listitem').
   localStorage.setItem('about_tooltip_seen_v1', 'true')
   __resetConfigCacheForTests()
-  // Reset Plan 05-04 mocks to default-authenticated state.
+  // Reset Plan 05.1-05 mocks to default-authenticated state.
   mocks.routerReplace.mockReset()
   mocks.routerPush.mockReset()
-  mocks.acquireToken.mockReset()
-  mocks.acquireToken.mockResolvedValue('default-token')
-  mocks.signOut.mockReset()
-  mocks.signOut.mockResolvedValue(undefined)
-  mocks.inProgress = 'none'
-  mocks.isAuthenticated = true
+  mocks.authStatus = 'authenticated'
   // Clipboard stub
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
@@ -756,38 +750,57 @@ describe('ChatSurface', () => {
     // This confirms the disabled guard by the render-branch design.
   })
 
-  // ── Plan 05-04 Task 2: token_expired retry flow (EXACT test name locked) ───
+  // ── Plan 05.1-05: token_expired retry flow (redirects to /api/login) ──────
 
-  it('token_expired onRetry calls acquireToken before replay', async () => {
-    // Mock acquireToken: 1st call (pre-fetch Bearer) returns 'orig-token';
-    //                    2nd call (retry refresh) returns 'fresh-token-xyz';
-    //                    subsequent retry-replay pre-fetch returns 'fresh-token-xyz'.
-    mocks.acquireToken
-      .mockResolvedValueOnce('orig-token')       // first send pre-fetch
-      .mockResolvedValueOnce('fresh-token-xyz')  // ErrorCard onRetry refresh
-      .mockResolvedValue('fresh-token-xyz')      // retry replay pre-fetch
+  it('token_expired onRetry redirects to /api/login', async () => {
+    // jsdom's window.location is read-only in newer versions; intercept the
+    // href setter via a getter-backed stub so the assertion works in both
+    // jsdom 22+ and older majors. Using vi.spyOn with the `set` access type
+    // throws in jsdom 24+ on window.location, so we install a custom
+    // property descriptor on the prototype we actually care about.
+    const hrefSpy = vi.fn()
+    const realLocation = window.location
+    // Preserve the original descriptors so afterEach restoration is a no-op
+    // (vi.restoreAllMocks only restores vi-owned spies; we re-assign
+    // window.location explicitly at the end of the test).
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      enumerable: true,
+      value: new Proxy(realLocation, {
+        set(target, prop, value) {
+          if (prop === 'href') {
+            hrefSpy(value)
+            return true
+          }
+          // Assignment to other properties falls through to the real object.
+          // `@ts-expect-error` would be noisy — cast via Reflect.
+          return Reflect.set(target, prop, value)
+        },
+        get(target, prop) {
+          return Reflect.get(target, prop)
+        },
+      }),
+    })
 
-    const capturedAuthHeaders: string[] = []
-    let callCount = 0
-
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockImplementation((url: string, init: RequestInit) => {
-        if (url.includes('/api/prompts')) {
-          return Promise.resolve(promptsResponse('consumer', consumerChips))
-        }
-        if (url.includes('/api/sources')) {
-          return Promise.resolve(jsonResponse(MOCK_SOURCE_CONTENT))
-        }
-        if (url.includes('/api/config')) {
-          return Promise.resolve(jsonResponse(MOCK_CONFIG_RESPONSE))
-        }
-        if (url.includes('/api/chat')) {
-          callCount++
-          const headers = init.headers as Record<string, string>
-          capturedAuthHeaders.push(headers?.Authorization ?? '')
-          if (callCount === 1) {
-            // First call: pre-stream 401 with token_expired.
+    try {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation((url: string) => {
+          if (url.includes('/api/prompts')) {
+            return Promise.resolve(promptsResponse('consumer', consumerChips))
+          }
+          if (url.includes('/api/sources')) {
+            return Promise.resolve(jsonResponse(MOCK_SOURCE_CONTENT))
+          }
+          if (url.includes('/api/config')) {
+            return Promise.resolve(jsonResponse(MOCK_CONFIG_RESPONSE))
+          }
+          if (url.includes('/api/chat')) {
+            // Every call: pre-stream 401 with token_expired. The retry handler
+            // must redirect to /api/login BEFORE a replay fetch is issued —
+            // this mock would return 401 again if ever replayed, so if the
+            // test sees the error card disappear without a window.location
+            // assignment, the handler regressed.
             return Promise.resolve(
               new Response(JSON.stringify({ error: 'token_expired' }), {
                 status: 401,
@@ -798,82 +811,128 @@ describe('ChatSurface', () => {
               }),
             )
           }
-          // Retry: 200 success stream.
-          return Promise.resolve(sseResponse([
-            '{"type":"done","can_answer":true,"validator_flips":0}',
-          ], 'te-req-2'))
-        }
-        return Promise.reject(new Error(`Unexpected fetch: ${url}`))
-      }),
-    )
+          return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+        }),
+      )
 
-    const user = userEvent.setup()
-    renderWithProviders(<ChatSurface role="consumer" onChangeRole={vi.fn()} />)
+      const user = userEvent.setup()
+      renderWithProviders(<ChatSurface role="consumer" onChangeRole={vi.fn()} />)
 
-    // Wait for chips + send a message
-    await waitFor(() => screen.queryAllByRole('listitem').length > 0)
-    const textarea = screen.getByRole('textbox')
-    await user.type(textarea, 'Ask something')
-    await user.keyboard('{Enter}')
+      // Wait for chips + send a message
+      await waitFor(() => screen.queryAllByRole('listitem').length > 0)
+      const textarea = screen.getByRole('textbox')
+      await user.type(textarea, 'Ask something')
+      await user.keyboard('{Enter}')
 
-    // (a) ErrorCard renders for the token_expired 401 dispatch
-    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
-    expect(screen.getByText(/Your session expired\./i)).toBeInTheDocument()
+      // (a) ErrorCard renders for the token_expired 401 dispatch
+      await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+      expect(screen.getByText(/Your session expired\./i)).toBeInTheDocument()
 
-    // Before clicking retry, acquireToken has been called exactly once
-    // (the first pre-fetch Bearer fetch).
-    expect(mocks.acquireToken).toHaveBeenCalledTimes(1)
-    const acquireCallsBeforeRetry = mocks.acquireToken.mock.calls.length
+      // (b) Click "Sign back in" — ErrorCard's primary label for token_expired.
+      const retryBtn = screen.getByRole('button', { name: /sign back in/i })
+      await user.click(retryBtn)
 
-    // (b) Click "Sign back in" — ErrorCard's primary label for token_expired.
-    const retryBtn = screen.getByRole('button', { name: /sign back in/i })
-    await user.click(retryBtn)
-
-    // (b) acquireToken was invoked AGAIN (the silent-refresh step) before
-    // the replay fetch was issued.
-    await waitFor(() => {
-      expect(mocks.acquireToken.mock.calls.length).toBeGreaterThan(acquireCallsBeforeRetry)
-    })
-
-    // Error card cleared, replay succeeded.
-    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
-
-    // (c) The replay fetch carried Authorization: Bearer fresh-token-xyz.
-    //     capturedAuthHeaders[0] = first send (orig-token);
-    //     capturedAuthHeaders[1] = retry replay (fresh-token-xyz).
-    expect(capturedAuthHeaders.length).toBeGreaterThanOrEqual(2)
-    expect(capturedAuthHeaders[1]).toBe('Bearer fresh-token-xyz')
+      // (c) window.location.href was set to /api/login
+      expect(hrefSpy).toHaveBeenCalledWith('/api/login')
+    } finally {
+      // Restore window.location so later tests in this file aren't affected.
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        enumerable: true,
+        value: realLocation,
+      })
+    }
   })
 
-  // ── Plan 05-04 Task 2: sign-out flow (confirm dialog when dirty) ───────────
+  // ── Plan 05.1-05: sign-out flow (confirm dialog when dirty) ───────────────
 
-  it('Sign out: with draft, opens confirm dialog; confirm fires msalSignOut', async () => {
-    setupFetch(defaultHandler(() => Promise.resolve(sseResponse([]))))
-
-    const user = userEvent.setup()
-    renderWithProviders(<ChatSurface role="consumer" onChangeRole={vi.fn()} />)
-
-    // Type a draft to make state dirty
-    await waitFor(() => screen.queryAllByRole('listitem').length > 0)
-    const textarea = screen.getByRole('textbox')
-    await user.type(textarea, 'unfinished thought')
-
-    // Open role popover → click Sign out
-    await user.click(screen.getByRole('button', { name: /Knowledge Consumer/i }))
-    await user.click(await screen.findByRole('button', { name: /^sign out$/i }))
-
-    // Confirm dialog appears with "Sign out?" title
-    await waitFor(() => {
-      expect(screen.getByText(/Sign out\?/i)).toBeInTheDocument()
+  it('Sign out: with draft, opens confirm dialog; confirm fetches /api/logout and redirects to /', async () => {
+    // Install a window.location.href setter spy (see token_expired test for
+    // the jsdom-compatible pattern).
+    const hrefSpy = vi.fn()
+    const realLocation = window.location
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      enumerable: true,
+      value: new Proxy(realLocation, {
+        set(target, prop, value) {
+          if (prop === 'href') {
+            hrefSpy(value)
+            return true
+          }
+          return Reflect.set(target, prop, value)
+        },
+        get(target, prop) {
+          return Reflect.get(target, prop)
+        },
+      }),
     })
-    // Sign-out is NOT yet invoked (waiting for confirm)
-    expect(mocks.signOut).not.toHaveBeenCalled()
 
-    // Click the confirm button ("Sign out and clear")
-    await user.click(screen.getByRole('button', { name: /sign out and clear/i }))
+    const fetchSpy = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/api/prompts')) {
+        return Promise.resolve(promptsResponse('consumer', consumerChips))
+      }
+      if (url.includes('/api/config')) {
+        return Promise.resolve(jsonResponse(MOCK_CONFIG_RESPONSE))
+      }
+      if (url.includes('/api/logout')) {
+        return Promise.resolve(jsonResponse({ ok: true }))
+      }
+      if (url.includes('/api/chat')) {
+        return Promise.resolve(sseResponse([]))
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchSpy)
 
-    // msalSignOut invoked
-    await waitFor(() => expect(mocks.signOut).toHaveBeenCalledTimes(1))
+    try {
+      const user = userEvent.setup()
+      renderWithProviders(<ChatSurface role="consumer" onChangeRole={vi.fn()} />)
+
+      // Type a draft to make state dirty
+      await waitFor(() => screen.queryAllByRole('listitem').length > 0)
+      const textarea = screen.getByRole('textbox')
+      await user.type(textarea, 'unfinished thought')
+
+      // Open role popover → click Sign out
+      await user.click(screen.getByRole('button', { name: /Knowledge Consumer/i }))
+      await user.click(await screen.findByRole('button', { name: /^sign out$/i }))
+
+      // Confirm dialog appears with "Sign out?" title
+      await waitFor(() => {
+        expect(screen.getByText(/Sign out\?/i)).toBeInTheDocument()
+      })
+      // /api/logout has NOT been called yet (waiting for confirm)
+      expect(
+        fetchSpy.mock.calls.some(([u]) =>
+          typeof u === 'string' && u.includes('/api/logout'),
+        ),
+      ).toBe(false)
+
+      // Click the confirm button ("Sign out and clear")
+      await user.click(screen.getByRole('button', { name: /sign out and clear/i }))
+
+      // fetch('/api/logout', {credentials:'include'}) was called
+      await waitFor(() => {
+        const logoutCall = fetchSpy.mock.calls.find(
+          ([u]) => typeof u === 'string' && u.includes('/api/logout'),
+        )
+        expect(logoutCall).toBeDefined()
+        const init = logoutCall?.[1] as RequestInit | undefined
+        expect(init?.credentials).toBe('include')
+      })
+
+      // window.location.href was set to '/'
+      await waitFor(() => {
+        expect(hrefSpy).toHaveBeenCalledWith('/')
+      })
+    } finally {
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        enumerable: true,
+        value: realLocation,
+      })
+    }
   })
 
 })
