@@ -158,6 +158,16 @@ Decisions are logged in PROJECT.md Key Decisions table. Load-bearing decisions a
 | 03-02 | DD MMM locale test regex loosened to accept en-US vs en-GB toLocaleDateString ordering | toLocaleDateString(undefined, ...) returns 'Apr 26' on en-US (Windows/Node) vs '26 Apr' on en-GB; test now asserts digit + 3-letter abbreviation independently — invariant preserved |
 | 03-02 | feedback/clear uses destructuring to omit the feedback property entirely (not set to undefined) | Omission is cleaner than explicit undefined for consumers using 'in' checks; TypeScript type narrowing also works cleanly |
 
+**Plan 03-01 decisions (scaffold-ui-stack):**
+
+| Plan  | Decision | Rationale |
+|-------|----------|-----------|
+| 03-01 | @vitejs/plugin-react@5.2.0 (not default 6.0.1) | @6.0.1 requires vite@^8; vitest@3.2.4 ships with vite@7.3.2. 5.2.0 is the latest version whose peer range includes vite 7. Without this pin, vitest JSX transform fails for any .tsx test file. |
+| 03-01 | vitest include widened to .test.tsx; global env stays 'node' | Per-file `// @vitest-environment jsdom` docblock is the Vitest documented pattern for mixed node/jsdom suites. Avoids performance overhead on 264 existing node-env backend tests. |
+| 03-01 | @tailwindcss/postcss (not legacy 'tailwindcss' PostCSS entry) | Tailwind v4 breaking change — the CSS-first approach requires the new dedicated PostCSS plugin. Legacy entry silently produces no utility classes. |
+| 03-01 | page.tsx is a static server component with no Date.now/Math.random | Pitfall 6 — SSR/CSR hydration mismatch prevention. Static markup also serves as visual smoke test that Tailwind compiled correctly (styled vs unstyled). |
+| 03-01 | Radix Tooltip.Provider mounted once at root in providers.tsx | All descendant Tooltip.Root instances inherit delayDuration=300/skipDelayDuration=100 without per-component props. Single 'use client' boundary at root. |
+
 **Plan 05 decisions (Phase-0 findings that constrain Phase 2):**
 
 | Plan | Decision | Rationale |
@@ -201,7 +211,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-23 — Phase 3 Plan 02 (pure-primitives) complete (~3 min active). Wave 1 complete (Plans 01 + 02 both shipped). Key commits: 960d164 (feat wire types + reducer, 20 tests) / 19cc9f3 (feat time + sourceTitles, co-committed with Plan 01 shell, 20 new tests for Plan 02). 264/264 tests green (40 new: 20 reducer + 13 time + 7 sourceTitles). SUMMARY at .planning/phases/03-role-experience-and-chat-ui/03-02-SUMMARY.md.
+Last session: 2026-04-23 — Phase 3 Wave 1 complete (Plans 01 + 02 both shipped in parallel). Plan 01 commits: 5465be6 (chore deps install) / 19cc9f3 (feat app shell). Plan 02 commits: 960d164 (feat wire types + reducer) — time.ts + sourceTitles co-landed in 19cc9f3. 264/264 tests green. SUMMARYs at .planning/phases/03-role-experience-and-chat-ui/03-01-SUMMARY.md + 03-02-SUMMARY.md.
 Stopped at: Phase 3 Wave 1 complete. Plans 03–06 unblocked.
 Resume signals (next session):
   - Plan 03 (useChatStream hook) — imports ChatState/ChatAction/SseEvent from src/chat-ui/types.ts
