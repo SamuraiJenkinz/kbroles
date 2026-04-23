@@ -9,6 +9,7 @@
 
 import { test, expect } from '@playwright/test'
 import { mockPrompts } from './fixtures/mockChat'
+import { stubMsalAuthenticated } from './fixtures/mockMsal'
 
 test.describe('SC #1 — Role select landing', () => {
   test.beforeEach(async ({ page }) => {
@@ -20,6 +21,10 @@ test.describe('SC #1 — Role select landing', () => {
       sessionStorage.clear()
       localStorage.setItem('about_tooltip_seen_v1', 'true')
     })
+    // Plan 05-04: seed MSAL sessionStorage so ChatPage's auth gate passes.
+    // addInitScript calls stack; stubMsalAuthenticated adds a second init
+    // script that runs AFTER the clear above, so the cache survives.
+    await stubMsalAuthenticated(page)
     await mockPrompts(page)
   })
 

@@ -1,5 +1,6 @@
 'use client'
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { chatReducer, initialChatState } from './chatReducer'
 import { useChatStream } from './useChatStream'
 import { useDraftBuffer } from './useDraftBuffer'
@@ -15,6 +16,7 @@ import { InputBar } from './InputBar'
 import { ChangeRoleDialog } from './ChangeRoleDialog'
 import { SourcePanel } from './SourcePanel'
 import { cn } from './cn'
+import { acquireToken, signOut as msalSignOut } from '@/auth/tokenProvider'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -56,6 +58,8 @@ export function ChatSurface({
   // consumes Plan 04's forwardRef<HTMLTextAreaElement, InputBarProps>
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const [changeRoleOpen, setChangeRoleOpen] = useState(false)
+  const [signOutConfirmOpen, setSignOutConfirmOpen] = useState(false)
+  const router = useRouter()
 
   // ── Panel state (Phase 4 — source panel open/closed + loaded source) ────────
   const panel = usePanelState()
@@ -96,7 +100,20 @@ export function ChatSurface({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panel.autoOpenOnFirstCitation])
 
-  const { send, stop, isStreaming } = useChatStream(handleEvent)
+  // ── Plan 05-04 Edit C: acquireToken DI for useChatStream Bearer header ─────
+  // ChatSurface lives inside MsalProvider (via root Providers), so a top-level
+  // import of tokenProvider is safe here — that's why the DI boundary is at
+  // the hook, not this file.
+  const boundAcquireToken = useCallback(() => acquireToken(null), [])
+  const handleAccessDenied = useCallback(() => {
+    router.replace('/access-denied')
+  }, [router])
+
+  const { send, stop, isStreaming } = useChatStream(handleEvent, {
+    acquireToken: boundAcquireToken,
+    onTokenExpired: () => { /* observe only; retry remains user-initiated via ErrorCard */ },
+    onAccessDenied: handleAccessDenied,
+  })
 
   // ── Send a message (chip click or freeform) ────────────────────────────────
   const dispatchSend = useCallback(
@@ -141,6 +158,33 @@ export function ChatSurface({
     panel.resetSession()                      // 7. re-arm auto-open for next role session
   }, [stop, onChangeRole, clearDraft, panel.resetSession])
 
+  // ── Plan 05-04 Edit A: sign-out flow ───────────────────────────────────────
+  // If there's a draft OR an in-flight stream, prompt a confirm dialog first.
+  // On confirm: stop stream, clear in-memory chat state + draft + role, then
+  // invoke tokenProvider.signOut() (→ msalInstance.logoutRedirect).
+  const handleSignOutRequest = useCallback(() => {
+    const dirty = draft.trim().length > 0 || state.inFlightId != null
+    if (dirty) {
+      setSignOutConfirmOpen(true)
+      return
+    }
+    void msalSignOut()
+  }, [draft, state.inFlightId])
+
+  const handleConfirmSignOut = useCallback(() => {
+    stop()                                    // abort in-flight stream
+    dispatch({ type: 'conversation/clear' })  // wipe messages
+    asstIdRef.current = null                  // prevent stale dispatch
+    setSignOutConfirmOpen(false)              // close dialog
+    clearDraft()                              // clear sessionStorage draft
+    // Clear role BEFORE logoutRedirect — setRole(null) is synchronous; once
+    // logout navigates away the user returns to / in an unauthenticated state
+    // and the ChatPage should show RoleSelect, not the previous role.
+    onChangeRole()
+    panel.resetSession()
+    void msalSignOut()
+  }, [stop, clearDraft, onChangeRole, panel.resetSession])
+
   // ── Stop (inline stop button) ──────────────────────────────────────────────
   const handleStop = useCallback(() => {
     const id = state.inFlightId
@@ -151,12 +195,28 @@ export function ChatSurface({
   }, [state.inFlightId, stop])
 
   // ── Retry (CHAT-07 — reconstruct last user turn) ───────────────────────────
+  // Plan 05-04 Edit D: when the retried bubble's errorCode === 'token_expired',
+  // await acquireToken(null) FIRST so the replay carries a freshly acquired
+  // Bearer. All other errorCodes keep the existing synchronous retry.
   const handleRetry = useCallback(
-    (errorBubbleId: string) => {
+    async (errorBubbleId: string) => {
       const idx = state.messages.findIndex(m => m.id === errorBubbleId)
       if (idx <= 0) return
       const userMsg = state.messages[idx - 1]
       if (userMsg.kind !== 'user') return
+      const errorMsg = state.messages[idx]
+      const isTokenExpired =
+        errorMsg.kind === 'assistant' && errorMsg.errorCode === 'token_expired'
+
+      if (isTokenExpired) {
+        try {
+          await acquireToken(null)
+        } catch {
+          // Silent + interactive both failed; bail out so the error card
+          // stays visible and the user can retry (which re-invokes this path).
+          return
+        }
+      }
 
       dispatch({ type: 'assistant/retry', id: errorBubbleId })  // remove failed bubble
       const asstId = crypto.randomUUID()
@@ -205,6 +265,7 @@ export function ChatSurface({
           role={role}
           onChangeRole={() => setChangeRoleOpen(true)}
           onNewConversation={handleNewConversation}
+          onSignOut={handleSignOutRequest}
         />
         <main className="flex flex-1 flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto">
@@ -216,7 +277,7 @@ export function ChatSurface({
               contentStewardEmail={config?.contentStewardEmail ?? 'kb-knowledge-team@mmc.com'}
               onCopy={() => { /* copy handled internally by AssistantControls */ }}
               onFeedback={handleFeedback}
-              onRetry={handleRetry}   // consumes Plan 04's onRetry prop (no mutation)
+              onRetry={(id) => { void handleRetry(id) }}   // consumes Plan 04's onRetry prop (no mutation)
               onChipClick={panel.chipClick}
               activeSource={panel.loaded}
             />
@@ -240,6 +301,17 @@ export function ChatSurface({
         open={changeRoleOpen}
         onOpenChange={setChangeRoleOpen}
         onConfirm={handleConfirmChangeRole}
+      />
+      {/* Sign-out confirm — same dialog component, parameterised copy. Plan
+          05-04 chose parameterisation over a sibling SignOutDialog.tsx
+          because a sibling would share 100% of the structure. */}
+      <ChangeRoleDialog
+        open={signOutConfirmOpen}
+        onOpenChange={setSignOutConfirmOpen}
+        onConfirm={handleConfirmSignOut}
+        title="Sign out?"
+        description="This will clear this conversation. Your draft is also discarded."
+        confirmLabel="Sign out and clear"
       />
       {/* Source panel — desktop persistent pane, mobile overlay drawer */}
       <SourcePanel

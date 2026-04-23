@@ -10,10 +10,12 @@
 
 import { test, expect } from '@playwright/test'
 import { mockPrompts, mockChatSuccess, mockChatError } from './fixtures/mockChat'
+import { stubMsalAuthenticated } from './fixtures/mockMsal'
 
 test.describe('SC #4 — Keyboard + error + retry', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => sessionStorage.clear())
+    await stubMsalAuthenticated(page)  // Plan 05-04: ChatPage auth gate
   })
 
   test('Enter submits; Shift+Enter inserts newline without submitting', async ({

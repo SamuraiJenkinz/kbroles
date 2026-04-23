@@ -9,6 +9,7 @@
 
 import { test, expect } from '@playwright/test'
 import { mockPrompts, mockChatSuccess } from './fixtures/mockChat'
+import { stubMsalAuthenticated } from './fixtures/mockMsal'
 
 test('SC #2 — author chip click → streaming answer + controls + citation + timestamp', async ({
   page,
@@ -20,6 +21,7 @@ test('SC #2 — author chip click → streaming answer + controls + citation + t
     sessionStorage.clear()
     localStorage.setItem('about_tooltip_seen_v1', 'true')
   })
+  await stubMsalAuthenticated(page)  // Plan 05-04: ChatPage auth gate
   await mockPrompts(page)
   await page.route('**/api/chat', (route) =>
     mockChatSuccess(route, {

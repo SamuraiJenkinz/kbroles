@@ -12,6 +12,7 @@
 
 import { test, expect } from '@playwright/test'
 import { mockPrompts, mockChatSuccess } from './fixtures/mockChat'
+import { stubMsalAuthenticated } from './fixtures/mockMsal'
 
 test.use({
   permissions: ['clipboard-read', 'clipboard-write'],
@@ -20,6 +21,7 @@ test.use({
 test.describe('SC #5 — Copy with citation suffix + thumbs-down fixed-option radio', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => sessionStorage.clear())
+    await stubMsalAuthenticated(page)  // Plan 05-04: ChatPage auth gate
   })
 
   test('Copy writes exact UTIL-01 format including (Source: KB0022991 · Flagging Articles)', async ({

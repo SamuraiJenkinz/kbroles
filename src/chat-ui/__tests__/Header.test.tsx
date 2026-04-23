@@ -92,6 +92,34 @@ describe('Header — Pitfall 16 icon+colour pairing on role pill', () => {
     expect(onChangeRole).toHaveBeenCalledTimes(1)
   })
 
+  it('popover "Sign out" option invokes onSignOut when provided (Plan 05-04)', async () => {
+    const onSignOut = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <Header
+        role="consumer"
+        onChangeRole={vi.fn()}
+        onNewConversation={vi.fn()}
+        onSignOut={onSignOut}
+      />,
+    )
+    // Open the pill popover
+    await user.click(screen.getByRole('button', { name: /Knowledge Consumer/i }))
+    // Click "Sign out" inside the popover
+    await user.click(await screen.findByRole('button', { name: /^sign out$/i }))
+    expect(onSignOut).toHaveBeenCalledTimes(1)
+  })
+
+  it('popover does NOT render "Sign out" when onSignOut is omitted (back-compat)', async () => {
+    const user = userEvent.setup()
+    render(<Header role="consumer" onChangeRole={vi.fn()} onNewConversation={vi.fn()} />)
+    await user.click(screen.getByRole('button', { name: /Knowledge Consumer/i }))
+    // Change role still visible
+    expect(await screen.findByRole('button', { name: /^change role$/i })).toBeInTheDocument()
+    // Sign out NOT rendered
+    expect(screen.queryByRole('button', { name: /^sign out$/i })).not.toBeInTheDocument()
+  })
+
   it('New conversation button invokes onNewConversation', async () => {
     const onNewConversation = vi.fn()
     const user = userEvent.setup()

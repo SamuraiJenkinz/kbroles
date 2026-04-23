@@ -1,11 +1,13 @@
 import { test, expect } from '@playwright/test'
 import { mockPrompts, mockConfig, mockSources, mockChatWithCitations } from './fixtures/mockChat'
+import { stubMsalAuthenticated } from './fixtures/mockMsal'
 
 test('SC #3 — Panel footer permalink + colour-coded badges + Pitfall 16/19 invariants', async ({ page }) => {
   await page.addInitScript(() => {
     sessionStorage.clear()
     localStorage.setItem('about_tooltip_seen_v1', 'true')
   })
+  await stubMsalAuthenticated(page)  // Plan 05-04: ChatPage auth gate
   await mockPrompts(page)
   await mockConfig(page)
   await mockSources(page)

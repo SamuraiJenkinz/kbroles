@@ -1,11 +1,13 @@
 import { test, expect } from '@playwright/test'
 import { mockPrompts, mockConfig, mockSources, mockChatWithCitations } from './fixtures/mockChat'
+import { stubMsalAuthenticated } from './fixtures/mockMsal'
 
 test('SC #1 — Author "Resolution field" → panel auto-opens to KB0020882 with blue badge + section body', async ({ page }) => {
   await page.addInitScript(() => {
     sessionStorage.clear()
     localStorage.setItem('about_tooltip_seen_v1', 'true')  // suppress About popover flash
   })
+  await stubMsalAuthenticated(page)  // Plan 05-04: ChatPage auth gate
   await mockPrompts(page)
   await mockConfig(page)
   await mockSources(page)

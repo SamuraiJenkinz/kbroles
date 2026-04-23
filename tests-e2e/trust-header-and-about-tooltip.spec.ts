@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { mockPrompts, mockConfig, mockSources } from './fixtures/mockChat'
+import { stubMsalAuthenticated } from './fixtures/mockMsal'
 
 test('SC #5 — Freshness line + first-run About tooltip + dismiss persists', async ({ page }) => {
   // Clear BOTH sessionStorage AND localStorage once on the FIRST page load.
@@ -13,6 +14,7 @@ test('SC #5 — Freshness line + first-run About tooltip + dismiss persists', as
       sessionStorage.setItem('__e2e_initialized', '1')
     }
   })
+  await stubMsalAuthenticated(page)  // Plan 05-04: ChatPage auth gate
   await mockPrompts(page)
   await mockConfig(page)
   await mockSources(page)

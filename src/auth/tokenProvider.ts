@@ -20,7 +20,24 @@ import { getMsalInstance } from './msalInstance'
 import { DEFAULT_SCOPES } from './msalConfig'
 import { detectHost } from './detectHost'
 
+/**
+ * Test-only bypass. When the Playwright mockMsal fixture seeds
+ * `window.__E2E_MSAL_TOKEN__` BEFORE app bootstrap, acquireToken returns
+ * that value verbatim without touching the MSAL cache. Production builds
+ * NEVER read this symbol — it exists only to keep the E2E chat-surface
+ * specs hermetic (no live Entra, no redirect navigation). Do not remove
+ * without coordinating with tests-e2e/fixtures/mockMsal.ts.
+ */
+declare global {
+  interface Window {
+    __E2E_MSAL_TOKEN__?: string
+  }
+}
+
 export async function acquireToken(account?: AccountInfo | null): Promise<string> {
+  if (typeof window !== 'undefined' && window.__E2E_MSAL_TOKEN__) {
+    return window.__E2E_MSAL_TOKEN__
+  }
   const msal: IPublicClientApplication = await getMsalInstance()
   const activeAccount = account ?? msal.getActiveAccount() ?? msal.getAllAccounts()[0]
 

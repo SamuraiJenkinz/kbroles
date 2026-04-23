@@ -4,11 +4,54 @@
  *
  * Plan 04-03: Header now includes AboutPopover (Radix Popover) which requires
  * ResizeObserver — polyfilled below since jsdom doesn't implement it.
+ *
+ * Plan 05-04: ChatSurface + ChatPage now depend on MSAL React hooks,
+ * next/navigation useRouter, and @/auth/tokenProvider. All mocked at
+ * module-load via vi.mock() so existing Phase-3/4 behavioural coverage
+ * stays assertion-stable.
  */
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as Tooltip from '@radix-ui/react-tooltip'
+
+// ─── Hoisted mock state (Plan 05-04) ─────────────────────────────────────────
+// vi.hoisted so the vi.mock factories below can reference the same instances.
+const mocks = vi.hoisted(() => ({
+  routerReplace: vi.fn(),
+  routerPush: vi.fn(),
+  acquireToken: vi.fn<(account?: unknown) => Promise<string>>(),
+  signOut: vi.fn<() => Promise<void>>(),
+  msalAccounts: [
+    {
+      homeAccountId: 'home-id',
+      environment: 'login.windows.net',
+      tenantId: 'test-tenant',
+      username: 'test@mmc.com',
+      localAccountId: 'local-id',
+      idTokenClaims: { tid: 'test-tenant', oid: 'local-id', preferred_username: 'test@mmc.com' },
+    },
+  ],
+  inProgress: 'none' as string,
+  isAuthenticated: true,
+}))
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ replace: mocks.routerReplace, push: mocks.routerPush }),
+}))
+
+vi.mock('@azure/msal-react', () => ({
+  useIsAuthenticated: () => mocks.isAuthenticated,
+  useMsal: () => ({ accounts: mocks.msalAccounts, inProgress: mocks.inProgress, instance: {} }),
+  useAccount: (account?: unknown) => account ?? mocks.msalAccounts[0],
+  MsalProvider: ({ children }: { children: React.ReactNode }) => children,
+}))
+
+vi.mock('@/auth/tokenProvider', () => ({
+  acquireToken: (account?: unknown) => mocks.acquireToken(account),
+  signOut: () => mocks.signOut(),
+}))
+
 import { ChatSurface } from '../ChatSurface'
 import { ChatPage } from '../ChatPage'
 import type { ChipItem, Role } from '../types'
@@ -154,6 +197,15 @@ beforeEach(() => {
   // The popover's <li> bullets would be counted as listitems by queryAllByRole('listitem').
   localStorage.setItem('about_tooltip_seen_v1', 'true')
   __resetConfigCacheForTests()
+  // Reset Plan 05-04 mocks to default-authenticated state.
+  mocks.routerReplace.mockReset()
+  mocks.routerPush.mockReset()
+  mocks.acquireToken.mockReset()
+  mocks.acquireToken.mockResolvedValue('default-token')
+  mocks.signOut.mockReset()
+  mocks.signOut.mockResolvedValue(undefined)
+  mocks.inProgress = 'none'
+  mocks.isAuthenticated = true
   // Clipboard stub
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
@@ -702,6 +754,126 @@ describe('ChatSurface', () => {
     )
     // Chips are not rendered at all during active stream (hidden by isEmpty gate)
     // This confirms the disabled guard by the render-branch design.
+  })
+
+  // ── Plan 05-04 Task 2: token_expired retry flow (EXACT test name locked) ───
+
+  it('token_expired onRetry calls acquireToken before replay', async () => {
+    // Mock acquireToken: 1st call (pre-fetch Bearer) returns 'orig-token';
+    //                    2nd call (retry refresh) returns 'fresh-token-xyz';
+    //                    subsequent retry-replay pre-fetch returns 'fresh-token-xyz'.
+    mocks.acquireToken
+      .mockResolvedValueOnce('orig-token')       // first send pre-fetch
+      .mockResolvedValueOnce('fresh-token-xyz')  // ErrorCard onRetry refresh
+      .mockResolvedValue('fresh-token-xyz')      // retry replay pre-fetch
+
+    const capturedAuthHeaders: string[] = []
+    let callCount = 0
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string, init: RequestInit) => {
+        if (url.includes('/api/prompts')) {
+          return Promise.resolve(promptsResponse('consumer', consumerChips))
+        }
+        if (url.includes('/api/sources')) {
+          return Promise.resolve(jsonResponse(MOCK_SOURCE_CONTENT))
+        }
+        if (url.includes('/api/config')) {
+          return Promise.resolve(jsonResponse(MOCK_CONFIG_RESPONSE))
+        }
+        if (url.includes('/api/chat')) {
+          callCount++
+          const headers = init.headers as Record<string, string>
+          capturedAuthHeaders.push(headers?.Authorization ?? '')
+          if (callCount === 1) {
+            // First call: pre-stream 401 with token_expired.
+            return Promise.resolve(
+              new Response(JSON.stringify({ error: 'token_expired' }), {
+                status: 401,
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Request-Id': 'te-req-1',
+                },
+              }),
+            )
+          }
+          // Retry: 200 success stream.
+          return Promise.resolve(sseResponse([
+            '{"type":"done","can_answer":true,"validator_flips":0}',
+          ], 'te-req-2'))
+        }
+        return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderWithProviders(<ChatSurface role="consumer" onChangeRole={vi.fn()} />)
+
+    // Wait for chips + send a message
+    await waitFor(() => screen.queryAllByRole('listitem').length > 0)
+    const textarea = screen.getByRole('textbox')
+    await user.type(textarea, 'Ask something')
+    await user.keyboard('{Enter}')
+
+    // (a) ErrorCard renders for the token_expired 401 dispatch
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    expect(screen.getByText(/Your session expired\./i)).toBeInTheDocument()
+
+    // Before clicking retry, acquireToken has been called exactly once
+    // (the first pre-fetch Bearer fetch).
+    expect(mocks.acquireToken).toHaveBeenCalledTimes(1)
+    const acquireCallsBeforeRetry = mocks.acquireToken.mock.calls.length
+
+    // (b) Click "Sign back in" — ErrorCard's primary label for token_expired.
+    const retryBtn = screen.getByRole('button', { name: /sign back in/i })
+    await user.click(retryBtn)
+
+    // (b) acquireToken was invoked AGAIN (the silent-refresh step) before
+    // the replay fetch was issued.
+    await waitFor(() => {
+      expect(mocks.acquireToken.mock.calls.length).toBeGreaterThan(acquireCallsBeforeRetry)
+    })
+
+    // Error card cleared, replay succeeded.
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+
+    // (c) The replay fetch carried Authorization: Bearer fresh-token-xyz.
+    //     capturedAuthHeaders[0] = first send (orig-token);
+    //     capturedAuthHeaders[1] = retry replay (fresh-token-xyz).
+    expect(capturedAuthHeaders.length).toBeGreaterThanOrEqual(2)
+    expect(capturedAuthHeaders[1]).toBe('Bearer fresh-token-xyz')
+  })
+
+  // ── Plan 05-04 Task 2: sign-out flow (confirm dialog when dirty) ───────────
+
+  it('Sign out: with draft, opens confirm dialog; confirm fires msalSignOut', async () => {
+    setupFetch(defaultHandler(() => Promise.resolve(sseResponse([]))))
+
+    const user = userEvent.setup()
+    renderWithProviders(<ChatSurface role="consumer" onChangeRole={vi.fn()} />)
+
+    // Type a draft to make state dirty
+    await waitFor(() => screen.queryAllByRole('listitem').length > 0)
+    const textarea = screen.getByRole('textbox')
+    await user.type(textarea, 'unfinished thought')
+
+    // Open role popover → click Sign out
+    await user.click(screen.getByRole('button', { name: /Knowledge Consumer/i }))
+    await user.click(await screen.findByRole('button', { name: /^sign out$/i }))
+
+    // Confirm dialog appears with "Sign out?" title
+    await waitFor(() => {
+      expect(screen.getByText(/Sign out\?/i)).toBeInTheDocument()
+    })
+    // Sign-out is NOT yet invoked (waiting for confirm)
+    expect(mocks.signOut).not.toHaveBeenCalled()
+
+    // Click the confirm button ("Sign out and clear")
+    await user.click(screen.getByRole('button', { name: /sign out and clear/i }))
+
+    // msalSignOut invoked
+    await waitFor(() => expect(mocks.signOut).toHaveBeenCalledTimes(1))
   })
 
 })

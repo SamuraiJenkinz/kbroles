@@ -37,10 +37,17 @@ export function Header({
   role,
   onChangeRole,
   onNewConversation,
+  onSignOut,
 }: {
   role: Role
   onChangeRole: () => void
   onNewConversation: () => void
+  /**
+   * Optional for Phase-3/4 unit tests that pre-date Plan 05-04. Plan 05-04
+   * ChatSurface always supplies this; it triggers the sign-out confirm-dialog
+   * flow when chat state is dirty, or the direct logoutRedirect when clean.
+   */
+  onSignOut?: () => void
 }) {
   const label = role === 'consumer' ? 'Knowledge Consumer' : 'KB Author'
   const Icon = role === 'consumer' ? User : Pencil
@@ -77,6 +84,14 @@ export function Header({
             >
               Change role
             </button>
+            {onSignOut && (
+              <button
+                onClick={onSignOut}
+                className="w-full rounded px-3 py-1.5 text-left text-sm hover:bg-neutral-50"
+              >
+                Sign out
+              </button>
+            )}
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>
