@@ -12,18 +12,18 @@ See: .planning/ROADMAP.md (6 phases, standard depth)
 ## Current Position
 
 Phase: 3 of 6 (Role Experience & Chat UI) — In progress
-Plan: 2 (pure-primitives) — COMPLETE; Plans 3–6 pending
-Status: Phase 3 Wave 1 (Plans 01 + 02) complete — Tailwind v4 + Radix + lucide scaffolded; wire types + pure chat reducer (12 actions) + formatRelative + sourceTitles shipped; 264/264 tests green. Plans 03–06 UNBLOCKED.
-Last activity: 2026-04-23 — Completed 03-02-pure-primitives-PLAN.md. Commits 960d164 (feat wire types + reducer) / 19cc9f3 (feat time + sourceTitles, co-committed with Plan 01 wave-1 shell).
+Plan: 3 (persistence-and-stream-hooks) — COMPLETE; Plans 4–6 pending (Plan 04 presentational-components also complete per Wave 2)
+Status: Phase 3 Wave 2 (Plans 03 + 04) complete — useRolePersistence + useDraftBuffer + useChatStream shipped; RoleSelect + Header + Message + all presentational components shipped; 302/302 tests green. Plans 05–06 UNBLOCKED.
+Last activity: 2026-04-23 — Completed 03-03-persistence-and-stream-hooks-PLAN.md. Commits 9cf726b (feat role+draft hooks) / eec6c72 (feat useChatStream + Plan 04 components, co-committed in Wave 2 parallel).
 
-Progress: [████████████████████] Phase 1 of 6 complete; Phase 2 of 6 complete; Phase 3 Plans 1–2 of 6 complete
+Progress: [████████████████████] Phase 1 of 6 complete; Phase 2 of 6 complete; Phase 3 Plans 1–4 of 6 complete
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: ~7.9 min active
-- Total execution time: ~81 min active (Plan 01 wall-clock includes ~1h 44min human-loop prod-smoke checkpoint)
+- Total plans completed: 11 (Plans 03 + 04 completed in Wave 2 parallel)
+- Average duration: ~7.5 min active
+- Total execution time: ~85 min active (Plan 01 wall-clock includes ~1h 44min human-loop prod-smoke checkpoint)
 
 **By Phase:**
 
@@ -31,7 +31,7 @@ Progress: [████████████████████] Phase 1
 |-------|-------|-------|----------|
 | 1 — Grounding Foundation | 5 / 5 (complete) | ~31 min | ~6 min |
 | 2 — Chat Backend BFF     | 4 / 4 (complete) | ~50 min active | ~12.5 min |
-| 3 — Role Experience & Chat UI | 2 / 6 complete | ~7 min (Plans 01+02) | ~3.5 min |
+| 3 — Role Experience & Chat UI | 4 / 6 complete | ~11 min (Plans 01–04) | ~2.75 min |
 
 **Recent Trend:**
 - 01-scaffold-registry-schema: 7 min, 8 tasks, 6 feat commits + 1 docs metadata commit, 23/23 tests green
@@ -150,6 +150,14 @@ Decisions are logged in PROJECT.md Key Decisions table. Load-bearing decisions a
 | 02-04 | /api/prompts uses `dynamic='force-dynamic'` (REVERSED from initial force-static) | Initial `force-static` choice was wrong: Next's static-cache layer drops the query string at runtime, so `request.url` loses `?role=...` and every real request 400s with `role_required`. Unit tests missed this (direct GET() call bypasses framework URL rewriting). Caught by Phase 2 live-curl verification (commit `157325b`). Proxy caching is still achieved via Cache-Control + shared-cache URL keying. Added drift-guard test `dynamic === 'force-dynamic'`. |
 | 02-04 | vi.hoisted factory pattern for capturing pino instance shared across vi.mock factories | vi.mock factories are hoisted above ordinary top-level declarations; referencing `capturingLogger` defined at test-file top-level throws `ReferenceError: Cannot access X before initialization`. vi.hoisted() guarantees state is initialised before any vi.mock factory runs. Canonical Vitest pattern for shared-state mocks. |
 
+**Plan 03-03 decisions (persistence-and-stream-hooks):**
+
+| Plan  | Decision | Rationale |
+|-------|----------|-----------|
+| 03-03 | Wave-2 parallel commit absorption: Task 3.2 files (useChatStream.ts + test) co-committed in eec6c72 with Plan 04 agent | Both plans ran in Wave 2; Plan 04 agent staged working tree before Task 3.2 commit could fire. All code is correct; no data lost. Same wave-parallel pattern as Plan 03-02 absorption. |
+| 03-03 | send-while-streaming test uses never-resolving fetch Promise (not never-resolving ReadableStream) | jsdom ReadableStream.read() blocks indefinitely when no chunks arrive; aborting the AbortController does not unblock reader.read() in jsdom. Keeping fetch itself as the pending promise allows signal.aborted assertion without a 5s test timeout. |
+| 03-03 | useDraftBuffer debounce tests use real setTimeout (300ms window) instead of vi.useFakeTimers() | Fake timers interact poorly with renderHook's internal async act() flushing when both share the same timer queue. Real 300ms window adds ~1.3s to suite but is deterministic and avoids flaky timer-draining edge cases. |
+
 **Plan 03-02 decisions (pure-primitives):**
 
 | Plan  | Decision | Rationale |
@@ -211,12 +219,11 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-23 — Phase 3 Wave 1 complete (Plans 01 + 02 both shipped in parallel). Plan 01 commits: 5465be6 (chore deps install) / 19cc9f3 (feat app shell). Plan 02 commits: 960d164 (feat wire types + reducer) — time.ts + sourceTitles co-landed in 19cc9f3. 264/264 tests green. SUMMARYs at .planning/phases/03-role-experience-and-chat-ui/03-01-SUMMARY.md + 03-02-SUMMARY.md.
-Stopped at: Phase 3 Wave 1 complete. Plans 03–06 unblocked.
+Last session: 2026-04-23 — Phase 3 Wave 2 complete (Plans 03 + 04 both shipped in parallel). Plan 03 commits: 9cf726b (feat role+draft hooks) / eec6c72 (feat useChatStream + Plan 04 components, co-committed in Wave 2 parallel). 302/302 tests green. SUMMARYs at .planning/phases/03-role-experience-and-chat-ui/03-03-SUMMARY.md + 03-04-SUMMARY.md (Plan 04 agent creates its own summary).
+Stopped at: Phase 3 Wave 2 complete. Plans 05–06 unblocked.
 Resume signals (next session):
-  - Plan 03 (useChatStream hook) — imports ChatState/ChatAction/SseEvent from src/chat-ui/types.ts
-  - Plan 04 (AssistantControls) — imports resolveSourceTitle from src/ui/sourceTitles.ts
-  - Plan 05 (ChatPage wiring) — imports chatReducer + initialChatState + formatRelative
+  - Plan 05 (ChatPage wiring) — imports useRolePersistence + useDraftBuffer + useChatStream + chatReducer + initialChatState
+  - Plan 06 (E2E/visual smoke) — exercises full ChatPage render path
 Resume file: None
 
 **Deferred work tracked for v1.1 (post-Phase 2):**
