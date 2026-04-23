@@ -39,7 +39,7 @@ Requirements for initial pilot release. Each maps to a roadmap phase (see Tracea
 - [ ] **GRND-04**: Every answer emits at most one citation (one `source_id` + `section_id` per response)
 - [ ] **GRND-05**: System prompt is composed per-role via a single `composeSystemPrompt(role)` template; no divergent prompt trees
 - [ ] **GRND-06**: LLM client is env-driven — local dev uses direct OpenAI (Bearer auth); prod uses MGTI ingress (api-key auth). Zero `NODE_ENV` branching in application code
-- [ ] **GRND-07**: Response streaming supported, with `answer` streamed and `citations` held until completion to prevent mid-stream flicker from validator-stripped citations
+- [x] **GRND-07**: Response streaming supported, with `answer` streamed and `citations` held until completion to prevent mid-stream flicker from validator-stripped citations
 
 ### Source Panel (PANE)
 
@@ -54,7 +54,7 @@ Requirements for initial pilot release. Each maps to a roadmap phase (see Tracea
 ### Fallback & Gap Capture (FBK)
 
 - [ ] **FBK-01**: Out-of-scope fallback text rendered exactly per handover §15 — "That information isn't in the loaded documents yet. Flag the gap to the CTSS Knowledge team via KB0022991."
-- [ ] **FBK-02**: Fallback triggers when model returns `can_answer: false` OR when every citation fails substring validation
+- [x] **FBK-02**: Fallback triggers when model returns `can_answer: false` OR when every citation fails substring validation
 - [ ] **FBK-03**: Fallback response has a visually distinct UI treatment (border, icon, or colour variation) so users don't mistake it for a grounded answer
 - [ ] **FBK-04**: "Flag a gap to the CTSS Knowledge team" one-click affordance rendered as part of the fallback — pre-populates a mailto/Teams link with the unanswered question
 
@@ -83,7 +83,7 @@ Requirements for initial pilot release. Each maps to a roadmap phase (see Tracea
 ### Content & Corpus Management (CORP)
 
 - [ ] **CORP-01**: Source text versioned as files in the repo; SOP updates land via PR; redeploy propagates the change
-- [ ] **CORP-02**: Entity allowlist (approvers list, KB numbers, ServiceNow URLs) validated post-response — any response containing an entity not on the allowlist is flagged for review
+- [x] **CORP-02**: Entity allowlist (approvers list, KB numbers, ServiceNow URLs) validated post-response — any response containing an entity not on the allowlist is flagged for review
 
 ### Delivery & Hosting (DELV)
 
@@ -201,7 +201,7 @@ Each v1 requirement maps to exactly one phase.
 | GRND-04 | Phase 1 | Complete |
 | GRND-05 | Phase 1 | Complete |
 | GRND-06 | Phase 1 | Complete |
-| GRND-07 | Phase 2 | Pending |
+| GRND-07 | Phase 2 | Complete |
 | PANE-01 | Phase 4 | Pending |
 | PANE-02 | Phase 4 | Pending |
 | PANE-03 | Phase 4 | Pending |
@@ -210,7 +210,7 @@ Each v1 requirement maps to exactly one phase.
 | PANE-06 | Phase 4 | Pending |
 | PANE-07 | Phase 4 | Pending |
 | FBK-01 | Phase 4 | Pending |
-| FBK-02 | Phase 2 | Pending |
+| FBK-02 | Phase 2 | Complete |
 | FBK-03 | Phase 4 | Pending |
 | FBK-04 | Phase 4 | Pending |
 | FDBK-01 | Phase 3 | Pending |
@@ -224,7 +224,7 @@ Each v1 requirement maps to exactly one phase.
 | TELE-03 | Phase 6 | Pending |
 | TELE-04 | Phase 6 | Pending |
 | CORP-01 | Phase 1 | Complete |
-| CORP-02 | Phase 2 | Pending |
+| CORP-02 | Phase 2 | Complete |
 | DELV-01 | Phase 5 | Pending |
 | DELV-02 | Phase 5 | Pending |
 | DELV-03 | Phase 5 | Pending |

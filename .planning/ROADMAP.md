@@ -13,7 +13,7 @@ Six phases that start with the load-bearing grounding layer (citation contract, 
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Grounding Foundation** — Source registry, citation contract, validator, LLM client, and MGTI smoke tests
-- [ ] **Phase 2: Chat Backend (BFF)** — Streaming /api/chat with citation hold, fallback trigger, and entity-allowlist post-check
+- [x] **Phase 2: Chat Backend (BFF)** — Streaming /api/chat with citation hold, fallback trigger, and entity-allowlist post-check
 - [ ] **Phase 3: Role Experience & Chat UI** — Role select, role-aware chat, input, messages, feedback, and utility actions
 - [ ] **Phase 4: Source Panel, Trust & Fallback UI** — Source panel, colour coding, freshness, about-tooltip, distinct fallback UI, flag-a-gap
 - [ ] **Phase 5: SSO & Teams Delivery** — NAA client auth, Teams manifest, App Service deployment, CI/CD
@@ -71,8 +71,8 @@ Plans:
 Plans:
 - [x] 01-infra-ops-setup-PLAN.md — Close Phase-1 carry-forward entry gates: .env handling ops doc, prod-mode Phase-0 smoke (checkpoint), install pino + serverExternalPackages, stub auth middleware, logger module (complete 2026-04-22)
 - [x] 02-chat-primitives-PLAN.md — Pure library units: SSE types + encoder, partial-JSON answer tracker, entity allowlist post-check, AsyncSemaphore, request schema parser, SUGGESTED_PROMPTS (13 chips) (complete 2026-04-22)
-- [ ] 03-upstream-resilience-PLAN.md — Extend streamAnswer: typed error classes, explicit refusal detection, bounded retry wrapper (429/5xx/network), AbortSignal total-timeout hook, inter-chunk v1.1 deferral
-- [ ] 04-route-wiring-PLAN.md — POST /api/chat SSE pipeline, GET /api/prompts, route-level Vitest tests, docs/api-chat-contract.md for Phase-3 hand-off
+- [x] 03-upstream-resilience-PLAN.md — Extend streamAnswer: typed error classes, explicit refusal detection, bounded retry wrapper (429/5xx/network), AbortSignal total-timeout hook, inter-chunk v1.1 deferral (complete 2026-04-22)
+- [x] 04-route-wiring-PLAN.md — POST /api/chat SSE pipeline, GET /api/prompts, route-level Vitest tests, docs/api-chat-contract.md for Phase-3 hand-off (complete 2026-04-22)
 
 ---
 
@@ -168,7 +168,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Grounding Foundation | 5/5 | Complete | 2026-04-22 |
-| 2. Chat Backend (BFF) | 2/4 | In progress (Wave 1 complete; Wave 2 Plans 03/04 pending) | - |
+| 2. Chat Backend (BFF) | 4/4 | Complete | 2026-04-22 |
 | 3. Role Experience & Chat UI | 0/TBD | Not started | - |
 | 4. Source Panel, Trust & Fallback UI | 0/TBD | Not started | - |
 | 5. SSO & Teams Delivery | 0/TBD | Not started | - |

@@ -11,10 +11,10 @@ See: .planning/ROADMAP.md (6 phases, standard depth)
 
 ## Current Position
 
-Phase: 2 of 6 (Chat Backend BFF) — COMPLETE
+Phase: 2 of 6 (Chat Backend BFF) — COMPLETE + VERIFIED
 Plan: Plans 1 (infra-ops-setup), 2 (chat-primitives), 3 (upstream-resilience), 4 (route-wiring) — ALL COMPLETE
-Status: Phase 2 complete — all 5 Success Criteria closed. 223/223 tests green. POST /api/chat + GET /api/prompts shipped; docs/api-chat-contract.md authored for Phase-3 hand-off. Phase 3 (chat-ui) UNBLOCKED.
-Last activity: 2026-04-22 — Plan 04 complete (3 tasks autonomous across ~15 min active; 3 commits a5f33ab / 2792c5c / 2559121 + pending docs metadata commit; 36 new tests: 10 prompts-route + 26 chat-route; 223/223 green); SUMMARY at .planning/phases/02-chat-backend-bff/02-04-SUMMARY.md
+Status: Phase 2 complete + live-verified — all 5 Success Criteria closed, live curls PASS for SC#1 happy path and SC#2 adversarial fallback. 224/224 tests green. POST /api/chat + GET /api/prompts shipped; docs/api-chat-contract.md authored for Phase-3 hand-off. Phase 3 (chat-ui) UNBLOCKED.
+Last activity: 2026-04-22 — Phase 2 verification complete: verifier 47/47 programmatic must-haves PASS; live curls confirmed SC#1/SC#2; bug fix 157325b (/api/prompts force-static → force-dynamic); tsconfig/env-test cast chore 9642020.
 
 Progress: [████████████████] Phase 1 of 6 complete; Phase 2 of 6 complete — all 4 plans shipped
 
@@ -143,7 +143,7 @@ Decisions are logged in PROJECT.md Key Decisions table. Load-bearing decisions a
 | 02-04 | Malformed JSON body → `{error:'messages_missing'}` rather than adding a 9th code | 02-CONTEXT.md §4.1 locks 8 error codes. Adding a 9th would require contract + docs + test updates. messages_missing is semantically correct (unparseable body ≡ messages absent). Client UX unchanged. |
 | 02-04 | Route-level tests mock streamAnswer at module level via vi.hoisted; no real createLlmClient touched | Every primitive is unit-tested in isolation (187 tests pre-existing). Route tests verify orchestration only — event ordering, log shape, error switch, semaphore discipline. One failure surface per test = hermetic results. |
 | 02-04 | IIFE has exactly ONE `log.info(...)` call-site per request (in terminal finally) | Auditing "no raw user-question text in logs" is O(1) — one call-site to review. Multiple log.info calls would multiply the regression surface where future refactor accidentally pivots req.body/answer into extras. |
-| 02-04 | /api/prompts uses `dynamic='force-static'` vs /api/chat's `force-dynamic` | /api/prompts body is a pure function of SUGGESTED_PROMPTS[role] — cacheable. /api/chat is per-request SSE — uncacheable. Different runtime semantics within same API dir is legal + clarifying in Next.js. |
+| 02-04 | /api/prompts uses `dynamic='force-dynamic'` (REVERSED from initial force-static) | Initial `force-static` choice was wrong: Next's static-cache layer drops the query string at runtime, so `request.url` loses `?role=...` and every real request 400s with `role_required`. Unit tests missed this (direct GET() call bypasses framework URL rewriting). Caught by Phase 2 live-curl verification (commit `157325b`). Proxy caching is still achieved via Cache-Control + shared-cache URL keying. Added drift-guard test `dynamic === 'force-dynamic'`. |
 | 02-04 | vi.hoisted factory pattern for capturing pino instance shared across vi.mock factories | vi.mock factories are hoisted above ordinary top-level declarations; referencing `capturingLogger` defined at test-file top-level throws `ReferenceError: Cannot access X before initialization`. vi.hoisted() guarantees state is initialised before any vi.mock factory runs. Canonical Vitest pattern for shared-state mocks. |
 
 **Plan 05 decisions (Phase-0 findings that constrain Phase 2):**
@@ -171,6 +171,13 @@ None.
 - ~~Corporate CA chain for outbound HTTPS from App Service to MGTI~~ — RESOLVED 2026-04-22: prod-mode Smoke 5 PASS (transitive on Smokes 1/2/3 succeeding against MGTI without UNABLE_TO_VERIFY_LEAF_SIGNATURE)
 - App Service provisioning ownership (who creates the Azure resources) — Phase 5
 - Named Content Steward for monthly rejected-article pull from ServiceNow — Phase 6 pilot prep
+
+**Phase 2 verification (2026-04-22):**
+- Verifier `human_needed`: 47/47 programmatic must-haves PASS; SC#1 + SC#2 + streaming cadence required live curls.
+- Live curls against dev-mode (api.openai.com, same code path as MGTI): Happy-path PASS (author "Resolution field" → `answer_delta` with KB0020882 content → one `citations` frame with valid quote substring → `done{can_answer:true, validator_flips:1}`; all locked response headers present including `X-Request-Id`). Adversarial PASS (consumer "capital of France" → single `fallback{reason:can_answer_false, text:<verbatim handover §15 copy>}`; zero `answer_delta`, zero `citations`, zero `done`).
+- Bug found + fixed: `/api/prompts` was `dynamic='force-static'` which strips query params at runtime. Switched to `force-dynamic`; added drift-guard test; route now 200s for both roles. See commit `157325b`.
+- Next 16.2.4 auto-updated `tsconfig.json` (added `.next/types/**/*.ts` include + generated `next-env.d.ts`) and the new types pulled in a stricter `ProcessEnv` augmentation. Widened `as NodeJS.ProcessEnv` → `as unknown as NodeJS.ProcessEnv` in `src/config/__tests__/env.test.ts`. See commit `9642020`.
+- Final state: 224/224 tests green; `pnpm typecheck` clean; VERIFICATION.md at `.planning/phases/02-chat-backend-bff/02-VERIFICATION.md` status flipped to `passed`.
 
 **Phase 2 entry gates (added by Plan 05) — ALL CLOSED:**
 - ~~**Prod-mode Phase-0 smoke pending MGTI creds + CA bundle; gates Phase 2 `/api/chat` route build.**~~ CLOSED 2026-04-22 by Plan 02-01 Task 1.1: all four gating smokes (1, 2, 3, 5) PASS against MGTI. Evidence in `docs/phase-0-smoke.md` 'Phase 2 entry gate — PROD-MODE GREEN' section. Plan 04 Task 2 (`/api/chat` route code commit) is UNBLOCKED.
