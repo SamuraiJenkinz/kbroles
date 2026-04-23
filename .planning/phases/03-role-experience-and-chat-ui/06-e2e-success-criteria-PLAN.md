@@ -18,12 +18,12 @@ autonomous: true
 
 must_haves:
   truths:
-    - "Playwright E2E suite proves Phase-3 SC #1 (role-select → role-aware greeting + correct chip count) in a live browser"
+    - "Playwright E2E suite proves Phase-3 SC #1 (role-select → role-aware greeting + correct chip count 5 consumer / 8 author) in a live browser"
     - "Playwright proves SC #2 (chip click → typing dots → streaming answer with avatar + timestamp + thumbs pair)"
-    - "Playwright proves SC #3 (Stop cancels cleanly + New conversation clears without changing role + Change role confirm clears + returns to RoleSelect)"
+    - "Playwright proves SC #3 (Stop cancels cleanly + New conversation clears without changing role + Change role confirm via 'Change role and clear' button clears + returns to RoleSelect)"
     - "Playwright proves SC #4 (Enter submits / Shift+Enter newline; a 5xx server response from /api/chat yields an ErrorCard with Retry button that re-sends successfully)"
     - "Playwright proves SC #5 (Copy button puts '<body>\\n\\n(Source: KB0022991 · Flagging Articles)' in the clipboard; 👎 opens the 4-option radio group with zero free-text inputs)"
-    - "Playwright regression test for Pitfall 13 (change role mid-stream): start a long-running stream, click Change role mid-stream, pick the OTHER role, send a new message — the new bubble contains ONLY the new role's answer with ZERO text leaked from the aborted stream"
+    - "Playwright regression test for Pitfall 13 (change role mid-stream): start a long-running stream, click Change role mid-stream (confirm via 'Change role and clear' button), pick the OTHER role, send a new message — the new bubble contains ONLY the new role's answer with ZERO text leaked from the aborted stream"
     - "Playwright regression test for Pitfall 17 (refresh preserves DRAFT only, not history): type a draft, refresh the page, draft is restored; send a message, refresh, messages are wiped but role persists"
     - "All specs run against `pnpm dev` on localhost:3000 (webServer is defined in playwright.config.ts from Plan 01)"
     - "Chat fetches are intercepted via Playwright route mocking so E2E runs don't need real MGTI access; the intercepts emit valid SSE framed text matching docs/api-chat-contract.md §3 exactly"
@@ -38,7 +38,7 @@ must_haves:
     - path: "tests-e2e/chat-happy-path.spec.ts"
       provides: "SC #2 — chip click → typing dots → streaming text → citation + controls + timestamp"
     - path: "tests-e2e/controls-stop-new-change.spec.ts"
-      provides: "SC #3 — Stop/New/Change + Pitfall 13 (mid-stream change)"
+      provides: "SC #3 — Stop/New/Change (via 'Change role and clear' confirm) + Pitfall 13 (mid-stream change)"
     - path: "tests-e2e/keyboard-and-error-retry.spec.ts"
       provides: "SC #4 — Enter/Shift+Enter + error card + Retry"
     - path: "tests-e2e/copy-and-feedback.spec.ts"
@@ -58,6 +58,10 @@ must_haves:
       to: "src/ui/sourceTitles.ts"
       via: "asserts copied text contains 'Flagging Articles' — the resolved title for section_id 'flagging-articles'"
       pattern: "Flagging Articles"
+    - from: "tests-e2e/controls-stop-new-change.spec.ts AND tests-e2e/role-contamination.spec.ts"
+      to: "src/chat-ui/ChangeRoleDialog.tsx"
+      via: "selector `getByRole('button', { name: /change role and clear/i })` targets the disambiguated dialog confirm button (Plan 04 Issue 2 fix); NOT the popover option `getByRole('button', { name: /^change role$/i })`"
+      pattern: "change role and clear"
 ---
 
 <objective>
@@ -85,6 +89,15 @@ Before starting, read:
 @docs/api-chat-contract.md  (§3 event schema — authoritative frame shapes to emit from the mock; §2 response headers — X-Request-Id, text/event-stream content-type, X-Accel-Buffering:no)
 
 @playwright.config.ts       (Plan 01 — webServer + baseURL)
+@src/chat-ui/ChangeRoleDialog.tsx  (Plan 04 — confirm button label is "Change role and clear" — used for disambiguated selector below)
+
+**Selector disambiguation — Change role popover option VS dialog confirm button (CHECKER Issue 2):**
+
+Plan 04 disambiguated the two "change role" buttons:
+- **Header popover "Change role" option** (trigger — OPENS the dialog): `getByRole('button', { name: /^change role$/i })` — accessible name is exactly `Change role`.
+- **ChangeRoleDialog confirm button** (CONFIRMS the change): `getByRole('button', { name: /change role and clear/i })` — accessible name is `Change role and clear`.
+
+ALL Plan 06 specs that interact with the change-role flow MUST use this distinction. Pre-revision specs used ambiguous `/^change role$/i` for both, which would flake during Radix portal teardown.
 
 **Playwright route mocking pattern (LOCKED):**
 
@@ -156,7 +169,7 @@ export async function mockPrompts(page: Page) {
 |----|-----------|----------|
 | 1 | role-select.spec.ts | Landing shows 2 cards; consumer pick → greeting + 5 chips; author pick → 8 chips |
 | 2 | chat-happy-path.spec.ts | Author chip click → typing dots → streaming answer → citation pill + timestamp + 👍/👎 |
-| 3 | controls-stop-new-change.spec.ts | Stop mid-stream; New conversation clears without role change; Change role → confirm → RoleSelect; mid-stream Change (Pitfall 13) |
+| 3 | controls-stop-new-change.spec.ts | Stop mid-stream; New conversation clears without role change; Change role → confirm via "Change role and clear" → RoleSelect; mid-stream Change (Pitfall 13) |
 | 4 | keyboard-and-error-retry.spec.ts | Enter sends; Shift+Enter newline; simulated 5xx → ErrorCard → Retry succeeds |
 | 5 | copy-and-feedback.spec.ts | Copy writes exact UTIL-01 string to clipboard; 👎 opens 4-option radio with NO textarea/input-text inside |
 
@@ -167,6 +180,7 @@ export async function mockPrompts(page: Page) {
 - Do NOT use Playwright's built-in `page.fill` or `press('Enter')` with wrong selector specificity — use `getByRole` / `getByLabel` so tests survive refactors.
 - Do NOT use fixed `waitFor` timeouts — use `toBeVisible`, `toHaveText`, `toContainText` with Playwright's auto-waits.
 - Do NOT attempt clipboard assertions via `navigator.clipboard.readText()` without granting clipboard permissions to the browser context (`browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] })`). The copy-format spec MUST request this permission.
+- **Do NOT use `/^change role$/i` to target the dialog confirm button** — that selector is reserved for the Header popover option. Dialog confirm is always `/change role and clear/i` (CHECKER Issue 2).
 </context>
 
 <tasks>
@@ -207,7 +221,7 @@ export async function mockPrompts(page: Page) {
        }
        ```
 
-       If Playwright's fulfill doesn't accept a streaming body in the installed version, fall back to a "chunked via multiple route handlers" approach: route the first hit to return one answer_delta, then on subsequent `abort` signal in the test assert the fetch was cancelled. Document whichever approach is used.
+       If Playwright's fulfill doesn't accept a streaming body in the installed version, fall back to a "chunked via multiple route handlers" approach: route the first hit to return one answer_delta, then on subsequent `abort` signal in the test assert the fetch was cancelled. Document whichever approach is used. (NIT — the `rs as unknown as Buffer` cast is acknowledged; if Playwright rejects it at runtime, swap to the chunked-body fallback and record the substitution in 03-06-SUMMARY.md.)
 
     2. **Create `tests-e2e/role-select.spec.ts`** (SC #1):
        ```ts
@@ -299,7 +313,7 @@ export async function mockPrompts(page: Page) {
 </task>
 
 <task type="auto">
-  <name>Task 6.2: SC#3 (stop/new/change) + SC#4 (keyboard/error/retry) + SC#5 (copy/feedback) + Pitfall 13 + Pitfall 17</name>
+  <name>Task 6.2: SC#3 (stop/new/change with disambiguated confirm selector) + SC#4 (keyboard/error/retry) + SC#5 (copy/feedback) + Pitfall 13 + Pitfall 17</name>
   <files>tests-e2e/controls-stop-new-change.spec.ts, tests-e2e/keyboard-and-error-retry.spec.ts, tests-e2e/copy-and-feedback.spec.ts, tests-e2e/role-contamination.spec.ts</files>
   <action>
     1. **Create `tests-e2e/controls-stop-new-change.spec.ts`** (SC #3 + Pitfall 13):
@@ -342,7 +356,7 @@ export async function mockPrompts(page: Page) {
            await expect(page.getByRole('button', { name: /Knowledge Consumer/i })).toBeVisible()
          })
 
-         test('Change role → confirm → back to RoleSelect + conversation cleared', async ({ page }) => {
+         test('Change role → confirm via "Change role and clear" → back to RoleSelect + conversation cleared', async ({ page }) => {
            await mockPrompts(page)
            await page.route('**/api/chat', route => mockChatSuccess(route))
            await page.goto('/')
@@ -350,14 +364,18 @@ export async function mockPrompts(page: Page) {
            await page.getByRole('textbox').fill('q1')
            await page.getByRole('button', { name: /send message/i }).click()
            await expect(page.getByText(/flag an article/i)).toBeVisible()
-           // Open role pill popover
+           // Open role pill popover (the Header pill itself)
            await page.getByRole('button', { name: /Knowledge Consumer/i }).click()
-           await page.getByRole('button', { name: /change role/i }).click()
+           // Click the popover "Change role" OPTION (opens the dialog)
+           // Selector: exactly "Change role" — NOT the dialog confirm
+           await page.getByRole('button', { name: /^change role$/i }).click()
            // Confirm dialog — Cancel is default focused (Pitfall 18)
            await expect(page.getByRole('dialog')).toBeVisible()
            await expect(page.getByRole('button', { name: /^cancel$/i })).toBeFocused()
-           // Confirm the change
-           await page.getByRole('button', { name: /^change role$/i }).click()
+           // CHECKER Issue 2 — confirm the change using the DISAMBIGUATED button label "Change role and clear"
+           // This selector will NOT match the popover option above (/^change role$/i) because the accessible
+           // name is literally "Change role and clear" — Radix portal teardown can no longer flake here.
+           await page.getByRole('button', { name: /change role and clear/i }).click()
            // Back on RoleSelect
            await expect(page.getByRole('button', { name: /Knowledge Consumer/i })).toBeVisible()
            await expect(page.getByRole('button', { name: /KB Author/i })).toBeVisible()
@@ -504,10 +522,12 @@ export async function mockPrompts(page: Page) {
            await page.getByRole('button', { name: /send message/i }).click()
            await expect(page.getByText(/Start of a long answer/i)).toBeVisible()
 
-           // Open role pill → Change role → confirm
+           // Open role pill → Change role (popover option) → confirm via "Change role and clear"
            await page.getByRole('button', { name: /Knowledge Consumer/i }).click()
-           await page.getByRole('button', { name: /change role/i }).click()
+           // Popover option "Change role" — OPENS the dialog
            await page.getByRole('button', { name: /^change role$/i }).click()
+           // CHECKER Issue 2 — dialog confirm "Change role and clear" — CONFIRMS the change
+           await page.getByRole('button', { name: /change role and clear/i }).click()
 
            // Back on RoleSelect; pick Author
            await page.getByRole('button', { name: /KB Author/i }).click()
@@ -559,7 +579,7 @@ export async function mockPrompts(page: Page) {
        })
        ```
 
-    5. **Commit:** `test(phase-3/plan-06): close Phase-3 with SC#3/#4/#5 + Pitfall 13/17 e2e coverage`.
+    5. **Commit:** `test(phase-3/plan-06): close Phase-3 with SC#3/#4/#5 + Pitfall 13/17 e2e coverage (disambiguated "Change role and clear" selector)`.
   </action>
   <verify>
     - `pnpm test:e2e` runs the full suite; all 12+ specs across the 6 files pass.
@@ -567,9 +587,10 @@ export async function mockPrompts(page: Page) {
     - `cat tests-e2e/role-contamination.spec.ts | grep -E "Pitfall 13|Pitfall 17"` → both markers present.
     - `cat tests-e2e/copy-and-feedback.spec.ts | grep "KB0022991 · Flagging Articles"` → asserts the exact UTIL-01 suffix string.
     - Clipboard permissions: the copy test has `test.use({ permissions: ['clipboard-read', 'clipboard-write'] })` at the file head.
+    - **Disambiguated dialog selector (CHECKER Issue 2)**: `grep -E "change role and clear" tests-e2e/controls-stop-new-change.spec.ts tests-e2e/role-contamination.spec.ts` → matches in BOTH files. The confirm button in the dialog is ALWAYS targeted by `/change role and clear/i`, never by `/^change role$/i` (the popover option).
   </verify>
   <done>
-    All 5 Phase-3 Success Criteria validated in a real browser. Pitfall 13 (change-role mid-stream) and Pitfall 17 (draft-only on refresh) have dedicated regression specs. Phase 3 is behaviourally closed.
+    All 5 Phase-3 Success Criteria validated in a real browser. Pitfall 13 (change-role mid-stream) and Pitfall 17 (draft-only on refresh) have dedicated regression specs. The Radix-portal-teardown flake risk is eliminated by using the disambiguated "Change role and clear" confirm selector in both control and contamination specs. Phase 3 is behaviourally closed.
   </done>
 </task>
 
@@ -582,15 +603,18 @@ export async function mockPrompts(page: Page) {
   - Pitfall 13 + Pitfall 17 explicit specs green.
   - UTIL-01 exact string `(Source: KB0022991 · Flagging Articles)` asserted by `expect(...).toBe(...)` (not a loose contains).
   - FDBK-02 no-free-text asserted via `textarea` + `input[type="text"]` count assertions inside the feedback panel.
+  - **CHECKER Issue 2 verified:** `grep -c "change role and clear" tests-e2e/controls-stop-new-change.spec.ts tests-e2e/role-contamination.spec.ts` → both files contain the disambiguated selector. `grep -cE "name: /\\^change role\\$/i" tests-e2e/controls-stop-new-change.spec.ts tests-e2e/role-contamination.spec.ts` → matches only the popover-option selector, NOT the dialog confirm.
 </verification>
 
 <success_criteria>
 Phase-3 SC #1 — role-select.spec.ts (3 tests + returning-user test).
 Phase-3 SC #2 — chat-happy-path.spec.ts (1 comprehensive test covering typing-dots, streaming, citation, timestamp, thumbs-pair, chip-hide).
-Phase-3 SC #3 — controls-stop-new-change.spec.ts (3 tests).
+Phase-3 SC #3 — controls-stop-new-change.spec.ts (3 tests; the change-role test uses the disambiguated "Change role and clear" confirm selector).
 Phase-3 SC #4 — keyboard-and-error-retry.spec.ts (2 tests).
 Phase-3 SC #5 — copy-and-feedback.spec.ts (2 tests with clipboard permission).
-Pitfall 13 + Pitfall 17 — role-contamination.spec.ts (2 tests).
+Pitfall 13 + Pitfall 17 — role-contamination.spec.ts (2 tests; Pitfall 13 test uses the disambiguated "Change role and clear" confirm selector).
+
+CHECKER Issue 2 closure: BOTH specs that exercise the ChangeRoleDialog confirm button use `/change role and clear/i`, not the ambiguous `/^change role$/i` — Radix-portal-teardown flake risk eliminated.
 
 Total: ≥12 Playwright specs, all SCs + 2 regression flows, fully mocked /api/chat and /api/prompts.
 </success_criteria>
@@ -601,9 +625,11 @@ After completion, create `.planning/phases/03-role-experience-and-chat-ui/03-06-
 - Total number of E2E specs (≥12) and wall-clock runtime.
 - Each SC→spec mapping with test names, so Phase-3 verification can cross-check SC closure.
 - Confirm Pitfall 13 and Pitfall 17 regressions both green by test name.
+- **CHECKER Issue 2 evidence:** record the result of `grep -c "change role and clear" tests-e2e/*.spec.ts` — both `controls-stop-new-change.spec.ts` and `role-contamination.spec.ts` contain at least one use of the disambiguated selector. No spec uses `/^change role$/i` to target the dialog confirm.
 - Flag known tradeoffs:
   - E2E uses chromium only (webkit + firefox are Phase-5 Teams-compatibility concerns, not Phase 3).
   - The mock fixture emits SSE as a single fulfilled body (not truly chunked) — partial-frame buffering is tested at unit level in Plan 03 useChatStream.
+  - mockChatSlow uses `rs as unknown as Buffer` cast; if Playwright rejects this at runtime, the chunked-body fallback is documented in plan context and the SUMMARY should record which variant was actually used.
   - Real /api/chat integration (no mocks) is manually smoke-verified via `pnpm dev` — future v1.1 could add a Playwright project that targets the real backend behind a feature flag.
 - Phase-3 closure checklist: 5 SCs proven by E2E + 2 pitfalls covered + 16 requirements mapped (AUTH-02, ROLE-01..05, CHAT-01..07, FDBK-01, FDBK-02, UTIL-01 — cross-check against REQUIREMENTS.md).
 </output>
