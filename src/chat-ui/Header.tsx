@@ -24,7 +24,7 @@ function FreshnessLine() {
   const full = `Grounded in KB0022991 v${KB0022991} · KB0020882 v${KB0020882} · Form schema ${SNOW_FORM}`
   return (
     <span
-      className="hidden truncate text-xs text-neutral-500 sm:inline"
+      className="hidden min-w-0 flex-1 truncate text-xs text-neutral-500 sm:block"
       aria-label={full}
       title={full}
     >
