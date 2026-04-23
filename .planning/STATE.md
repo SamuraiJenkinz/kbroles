@@ -7,16 +7,16 @@ See: .planning/REQUIREMENTS.md (49 v1 requirements across 12 categories)
 See: .planning/ROADMAP.md (6 phases, standard depth)
 
 **Core value:** Every answer is verifiable against the authoritative SOP — users read the cited source section without leaving the conversation. No ungrounded answers, no invented field names or approver names.
-**Current focus:** Phase 2 — Chat Backend (BFF)
+**Current focus:** Phase 3 — Role Experience & Chat UI
 
 ## Current Position
 
-Phase: 2 of 6 (Chat Backend BFF) — COMPLETE + VERIFIED
-Plan: Plans 1 (infra-ops-setup), 2 (chat-primitives), 3 (upstream-resilience), 4 (route-wiring) — ALL COMPLETE
-Status: Phase 2 complete + live-verified — all 5 Success Criteria closed, live curls PASS for SC#1 happy path and SC#2 adversarial fallback. 224/224 tests green. POST /api/chat + GET /api/prompts shipped; docs/api-chat-contract.md authored for Phase-3 hand-off. Phase 3 (chat-ui) UNBLOCKED.
-Last activity: 2026-04-22 — Phase 2 verification complete: verifier 47/47 programmatic must-haves PASS; live curls confirmed SC#1/SC#2; bug fix 157325b (/api/prompts force-static → force-dynamic); tsconfig/env-test cast chore 9642020.
+Phase: 3 of 6 (Role Experience & Chat UI) — In progress
+Plan: 2 (pure-primitives) — COMPLETE; Plans 3–6 pending
+Status: Phase 3 Wave 1 (Plans 01 + 02) complete — Tailwind v4 + Radix + lucide scaffolded; wire types + pure chat reducer (12 actions) + formatRelative + sourceTitles shipped; 264/264 tests green. Plans 03–06 UNBLOCKED.
+Last activity: 2026-04-23 — Completed 03-02-pure-primitives-PLAN.md. Commits 960d164 (feat wire types + reducer) / 19cc9f3 (feat time + sourceTitles, co-committed with Plan 01 wave-1 shell).
 
-Progress: [████████████████] Phase 1 of 6 complete; Phase 2 of 6 complete — all 4 plans shipped
+Progress: [████████████████████] Phase 1 of 6 complete; Phase 2 of 6 complete; Phase 3 Plans 1–2 of 6 complete
 
 ## Performance Metrics
 
@@ -31,6 +31,7 @@ Progress: [████████████████] Phase 1 of 6 comple
 |-------|-------|-------|----------|
 | 1 — Grounding Foundation | 5 / 5 (complete) | ~31 min | ~6 min |
 | 2 — Chat Backend BFF     | 4 / 4 (complete) | ~50 min active | ~12.5 min |
+| 3 — Role Experience & Chat UI | 2 / 6 complete | ~7 min (Plans 01+02) | ~3.5 min |
 
 **Recent Trend:**
 - 01-scaffold-registry-schema: 7 min, 8 tasks, 6 feat commits + 1 docs metadata commit, 23/23 tests green
@@ -42,6 +43,9 @@ Progress: [████████████████] Phase 1 of 6 comple
 - 02-01-infra-ops-setup: 17 min active (2 sessions across prod-smoke human checkpoint, wall-clock ~2h 24min); 3 tasks, 1 checkpoint:human-verify (Task 1.1 prod-mode smoke gate); 4 commits d9b5f34 / fd373dd / 60d7aca / b12a77c + pending docs metadata; 137/137 tests green (5 new — but 2 logger tests were already counted in Plan 02's 134 due to wave-1 parallel absorption); pino 10.3.1 + pino-pretty 13.1.3 in deps; Phase 2 entry gate PROD-MODE GREEN — Plan 04 UNBLOCKED
 - 02-03-upstream-resilience: ~10 min active; 3 tasks autonomous (no checkpoints); 3 feat commits 574e1f7 / 0e0acc2 / f0b2313 + pending docs metadata commit; 187/187 tests green (50 new: 13 errors + 17 stream additions + 13 retry + 8 env); src/llm/errors.ts added (five typed error classes + isRetryableUpstream); streamAnswer extended with {response, usage} shape + withRetry wrapper + AbortSignal hook; env.ts extended with four UPSTREAM_* knobs; v1.1 inter-chunk deferral marker with drift-guard test; zero new dependencies
 - 02-04-route-wiring: ~15 min active; 3 tasks autonomous (no checkpoints); 3 commits a5f33ab (feat prompts route) / 2792c5c (feat chat route) / 2559121 (docs client contract) + pending docs metadata commit; 223/223 tests green (36 new: 10 prompts-route + 26 chat-route); src/app/api/chat/route.ts + src/app/api/prompts/route.ts + docs/api-chat-contract.md shipped; all 5 Phase-2 SCs closed with dedicated coverage; zero new dependencies
+- 03-01-scaffold-ui-stack: ~4 min active; 2 tasks (1 chore deps + 1 feat shell); commits 5465be6 (chore) / 19cc9f3 (feat); 264/264 tests green (0 new — Wave 1 tests absorbed into Plan 02 commit); Tailwind v4 + Radix Primitives + lucide-react + Playwright infra; root app shell shipped
+- 03-02-pure-primitives: ~3 min active; 2 tasks autonomous; commits 960d164 (feat types+reducer) + 19cc9f3 (co-committed wave-1 feat time+sourceTitles); 264/264 tests green (40 new: 20 reducer + 13 time + 7 sourceTitles); wire types + pure chat reducer (12 actions) + formatRelative + sourceTitles; zero new dependencies
+- 03-01-scaffold-ui-stack: ~4 min active; 2 tasks autonomous (no checkpoints); 2 commits 5465be6 (chore deps) / 19cc9f3 (feat shell) + pending docs metadata; 264/264 tests green (absorbed 20 tests from Wave-1 parallel Plan 02: time.ts formatRelative + sourceTitles); Tailwind v4 + 4 Radix packages + lucide-react + clsx + tailwind-merge + @vitejs/plugin-react@5.2.0 + RTL + jsdom + Playwright@1.59.1 + chromium installed; postcss.config.mjs + playwright.config.ts created; root app shell (layout/globals.css/providers/page) live
 
 *Updated after each plan completion*
 
@@ -146,6 +150,14 @@ Decisions are logged in PROJECT.md Key Decisions table. Load-bearing decisions a
 | 02-04 | /api/prompts uses `dynamic='force-dynamic'` (REVERSED from initial force-static) | Initial `force-static` choice was wrong: Next's static-cache layer drops the query string at runtime, so `request.url` loses `?role=...` and every real request 400s with `role_required`. Unit tests missed this (direct GET() call bypasses framework URL rewriting). Caught by Phase 2 live-curl verification (commit `157325b`). Proxy caching is still achieved via Cache-Control + shared-cache URL keying. Added drift-guard test `dynamic === 'force-dynamic'`. |
 | 02-04 | vi.hoisted factory pattern for capturing pino instance shared across vi.mock factories | vi.mock factories are hoisted above ordinary top-level declarations; referencing `capturingLogger` defined at test-file top-level throws `ReferenceError: Cannot access X before initialization`. vi.hoisted() guarantees state is initialised before any vi.mock factory runs. Canonical Vitest pattern for shared-state mocks. |
 
+**Plan 03-02 decisions (pure-primitives):**
+
+| Plan  | Decision | Rationale |
+|-------|----------|-----------|
+| 03-02 | Wave-1 parallel commit absorption: Task 2.2 files co-committed in 19cc9f3 with Plan 01 shell | Both plans ran in Wave 1; Plan 01 agent staged working tree before Plan 02's Task 2.2 commit could fire. All code is correct; no data lost. |
+| 03-02 | DD MMM locale test regex loosened to accept en-US vs en-GB toLocaleDateString ordering | toLocaleDateString(undefined, ...) returns 'Apr 26' on en-US (Windows/Node) vs '26 Apr' on en-GB; test now asserts digit + 3-letter abbreviation independently — invariant preserved |
+| 03-02 | feedback/clear uses destructuring to omit the feedback property entirely (not set to undefined) | Omission is cleaner than explicit undefined for consumers using 'in' checks; TypeScript type narrowing also works cleanly |
+
 **Plan 05 decisions (Phase-0 findings that constrain Phase 2):**
 
 | Plan | Decision | Rationale |
@@ -189,11 +201,12 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-22 — Phase 2 Plan 04 complete (3 tasks autonomous, ~15 min active). Three atomic commits a5f33ab (feat prompts) / 2792c5c (feat chat) / 2559121 (docs contract) + pending docs metadata commit. 223/223 tests green (36 new: 10 prompts + 26 chat). SUMMARY at .planning/phases/02-chat-backend-bff/02-04-SUMMARY.md. Phase 2 CLOSES: 4 of 4 plans shipped; all 5 Success Criteria closed.
-Stopped at: Phase 2 complete. Phase 3 (chat-ui) is the next plan — unblocked; consumers build against docs/api-chat-contract.md alone without `.planning/` reads. The reference TypeScript snippet in §8 of that doc is copy-paste starter code for the Phase-3 `useChatStream` hook.
+Last session: 2026-04-23 — Phase 3 Plan 02 (pure-primitives) complete (~3 min active). Wave 1 complete (Plans 01 + 02 both shipped). Key commits: 960d164 (feat wire types + reducer, 20 tests) / 19cc9f3 (feat time + sourceTitles, co-committed with Plan 01 shell, 20 new tests for Plan 02). 264/264 tests green (40 new: 20 reducer + 13 time + 7 sourceTitles). SUMMARY at .planning/phases/03-role-experience-and-chat-ui/03-02-SUMMARY.md.
+Stopped at: Phase 3 Wave 1 complete. Plans 03–06 unblocked.
 Resume signals (next session):
-  - "execute phase 3" or "plan phase 3" → spawn Phase 3 planning (chat-ui) based on ROADMAP.md Phase 3 scope. Entry artifacts ready: /api/chat SSE contract, /api/prompts chip endpoint, docs/api-chat-contract.md.
-  - Phase 3 dependencies: React 19 (already in package.json), Next.js 16 App Router (already configured), Tailwind (Phase 3 will add).
+  - Plan 03 (useChatStream hook) — imports ChatState/ChatAction/SseEvent from src/chat-ui/types.ts
+  - Plan 04 (AssistantControls) — imports resolveSourceTitle from src/ui/sourceTitles.ts
+  - Plan 05 (ChatPage wiring) — imports chatReducer + initialChatState + formatRelative
 Resume file: None
 
 **Deferred work tracked for v1.1 (post-Phase 2):**
