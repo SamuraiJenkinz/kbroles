@@ -152,26 +152,32 @@ export async function POST(request: Request): Promise<Response> {
 
     const user = await getRequestUser(request)
     if ('error' in user) {
-      // Three discriminants from Plan 05-03's real JWT validator. The
-      // `wrong_tenant` branch maps to 403 `access_denied` (CONTEXT §Blocked-
-      // user UX) so that Plan 05-04's client routes the user to the
-      // /access-denied page instead of re-prompting sign-in. `token_expired`
-      // maps to 401 with the 9th ErrorCode string on the wire so ErrorCard
-      // (Plan 05-02) renders the 'Sign back in' CTA. Default `unauthorized`
-      // preserves the Phase-2 wire contract. All three use log.warn (distinct
-      // from the terminal log.info in the IIFE's finally, preserving the
-      // single-log-per-completed-request invariant; semaphore-full 429 path
-      // already sets the precedent for pre-stream log.warn).
-      if (user.error === 'token_expired') {
+      // Phase 5.1 — internal AuthResult discriminants were renamed for the
+      // session-cookie world (wrong_tenant → forbidden, token_expired →
+      // session_expired), but the WIRE error codes (body.error string +
+      // HTTP status) are preserved EXACTLY so the frontend ErrorCard,
+      // useChatStream, and their ~30 assertions don't change:
+      //
+      //   session_expired (internal) → 401 { error: 'token_expired' } (wire)
+      //   forbidden       (internal) → 403 { error: 'access_denied' } (wire)
+      //   unauthorized    (internal) → 401 { error: 'unauthorized' }  (wire)
+      //
+      // The `forbidden` branch routes the client to the /access-denied page
+      // (CONTEXT §Blocked-user UX); `token_expired` drives the 'Sign back
+      // in' CTA in ErrorCard. All three use log.warn (distinct from the
+      // terminal log.info in the IIFE's finally) to preserve the single-
+      // log-per-completed-request invariant; the semaphore-full 429 path
+      // already sets the precedent for pre-stream log.warn.
+      if (user.error === 'session_expired') {
         log.warn(
-          { ingress_status_code: 401, auth_result: 'token_expired' },
+          { ingress_status_code: 401, auth_result: 'session_expired' },
           'chat auth failed',
         )
         return jsonError('token_expired', 401, { 'X-Request-Id': request_id })
       }
-      if (user.error === 'wrong_tenant') {
+      if (user.error === 'forbidden') {
         log.warn(
-          { ingress_status_code: 403, auth_result: 'wrong_tenant' },
+          { ingress_status_code: 403, auth_result: 'forbidden' },
           'chat auth failed',
         )
         return jsonError('access_denied', 403, { 'X-Request-Id': request_id })
@@ -350,13 +356,14 @@ export async function POST(request: Request): Promise<Response> {
             refusal_fired: !!fallbackReason,
             fallback_reason: fallbackReason ?? null,
             ingress_status_code: ingressStatus,
-            // Plan 05-03: operator-visible auth outcome + actor for request
-            // correlation. `sub` is jwt.oid (a GUID) — not raw user content,
-            // so the logger forbidden-substrings invariant (field names
+            // Plan 05.1-04: operator-visible auth outcome + actor for
+            // request correlation. `sub` is the session.user.oid (Entra
+            // object ID, a GUID) — not raw user content, so the logger
+            // forbidden-substrings invariant (field names
             // user_question/messages/content/answer/quote) stays green.
-            // `tid` and `preferred_username` are deliberately NOT logged
-            // here to minimise PII footprint; `sub` alone is enough for
-            // operator correlation back to the Entra directory.
+            // `email` and `roles` from the session are deliberately NOT
+            // logged here to minimise PII footprint; `sub` alone is enough
+            // for operator correlation back to the Entra directory.
             auth_result: 'success',
             sub: user.sub,
             prompt_tokens: usage?.prompt_tokens ?? null,

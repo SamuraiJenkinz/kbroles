@@ -3,15 +3,23 @@ import { ShieldOff } from 'lucide-react'
 import { useConfig } from '@/chat-ui/useConfig'
 
 /**
- * Wrong-tenant full-page block. Phase-5 auth middleware (Plan 03) + Phase-5
- * AuthProvider (Plan 04) both redirect users here when a JWT's `tid` is
- * valid-but-not-MMC or when an NAA sign-in surfaces a non-allowlisted tenant.
+ * App-Role-missing full-page block. Phase 5.1's session-cookie auth middleware
+ * (src/app/api/_middleware.ts) + the /api/me client guard route authenticated
+ * users here when their Entra session is valid but they lack the
+ * `KbAssistant.User` App Role assignment — i.e. Entra recognises who they
+ * are but MMC IT hasn't granted this specific pilot access yet.
  *
- * CONTEXT §Blocked-user UX invariant: leak NO JWT claims, tenant IDs, or
- * technical detail. Mailto uses contentStewardEmail from /api/config (same
- * source as the Phase-4 FallbackCard's flag-a-gap button).
+ * Phase 5's original "wrong tenant" framing was dropped in 5.1 because the
+ * BFF pattern uses a single-tenant confidential-client app (MMC-only token
+ * issuance is guaranteed by the Entra app registration; we never see a
+ * cross-tenant token at the session-cookie layer). The failure mode now
+ * reaching this page is App-Role gating only.
  *
- * Phase 5 — Plan 05-02 Task 1.
+ * CONTEXT §Blocked-user UX invariant: leak NO Entra claims, object IDs,
+ * tenant IDs, or technical detail. Mailto uses contentStewardEmail from
+ * /api/config (same source as the Phase-4 FallbackCard's flag-a-gap button).
+ *
+ * Phase 5.1 — Plan 04 Task 2.
  */
 export default function AccessDeniedPage() {
   const { config } = useConfig()
@@ -27,7 +35,7 @@ export default function AccessDeniedPage() {
       <ShieldOff size={48} className="text-red-600" aria-hidden />
       <h1 className="text-2xl font-semibold text-neutral-900">Access restricted</h1>
       <p className="text-sm text-neutral-600">
-        This assistant is available only to MMC colleagues. If you believe this is an error, contact the CTSS Knowledge team.
+        Your MMC account doesn&apos;t have access to this assistant yet. Contact the CTSS Knowledge team to request access.
       </p>
       <a
         href={mailto}

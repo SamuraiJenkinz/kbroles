@@ -35,13 +35,13 @@ const mocks = vi.hoisted(() => {
   const factory = typeof pinoFactory === 'function' ? pinoFactory : pinoFactory.default
   const logger = factory({ level: 'debug' }, stream)
   const streamAnswerMock = vi.fn()
-  // Plan 05-03: override slot for getRequestUser return value. When null,
+  // Plan 05.1-04: override slot for getRequestUser return value. When null,
   // the mocked module delegates to the real implementation (so the existing
-  // Phase-2 `process.env.NODE_ENV=production + no Authorization header →
-  // {error:'unauthorized'}` test keeps exercising the real code path). When
-  // set, the new Plan 05-03 discriminant tests inject {error:'token_expired'}
-  // / {error:'wrong_tenant'} without having to synth real JWTs — synthesis
-  // is covered by src/app/api/__tests__/_middleware.test.ts (Task 1).
+  // `process.env.NODE_ENV=production + no session cookie → {error:'unauthorized'}`
+  // test keeps exercising the real code path). When set, the discriminant
+  // tests inject {error:'session_expired'} / {error:'forbidden', upn} without
+  // having to synth iron-session cookies — session-state synthesis is covered
+  // by src/app/api/__tests__/_middleware.test.ts (Plan 05.1-04 Task 1).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const authOverride: { value: any } = { value: null }
   return {
@@ -68,22 +68,36 @@ vi.mock('@/obs/logger', () => ({
   requestLogger: (fields: Record<string, unknown>) => mocks.logger.child(fields),
 }))
 
-// Plan 05-03: wrap the real _middleware module so override-less tests keep
-// exercising the real validator (dev-permissive path, prod-no-header path),
-// while the new discriminant tests can inject token_expired / wrong_tenant
-// by setting mocks.authOverride.value. vi.importActual is hoisted-safe.
-vi.mock('@/app/api/_middleware', async () => {
-  const actual = await vi.importActual<typeof import('@/app/api/_middleware')>(
-    '@/app/api/_middleware',
-  )
-  return {
-    ...actual,
-    getRequestUser: async (req: Request) => {
-      if (mocks.authOverride.value !== null) return mocks.authOverride.value
-      return actual.getRequestUser(req)
-    },
-  }
-})
+// Plan 05.1-04: fully replace the _middleware module with a hermetic mock.
+// The real _middleware now reads the iron-session cookie via `cookies()` from
+// `next/headers`, which is not available outside an actual route-handler
+// request context (vitest-node). Rather than pull in next/headers mocking
+// here, we re-implement the SAME THREE BRANCHES the real middleware exposes
+// — discriminant-injection, prod-no-cookie-unauthorized, and
+// dev-no-cookie-local-dev-stub — and trust the real middleware's behaviour
+// to be covered by src/app/api/__tests__/_middleware.test.ts (Plan 05.1-04
+// Task 1's 7 tests).
+vi.mock('@/app/api/_middleware', () => ({
+  getRequestUser: async (_req: Request) => {
+    // Injected discriminant wins (the discriminant describe block uses this).
+    if (mocks.authOverride.value !== null) return mocks.authOverride.value
+    // Prod-no-cookie path: returns unauthorized. Mirrors real middleware so
+    // the Issue #3 semaphore-release test ('401 in prod releases the slot')
+    // keeps exercising a real 401.
+    if (process.env.NODE_ENV === 'production') {
+      return { error: 'unauthorized' }
+    }
+    // Dev/test-permissive stub: matches real middleware's Phase 2/3/4
+    // regression guard — no session cookie + non-prod → local-dev user with
+    // required role. Shape matches the new AuthResult success branch
+    // (sub/email/roles).
+    return {
+      sub: 'local-dev',
+      email: 'local@dev',
+      roles: ['KbAssistant.User'],
+    }
+  },
+}))
 
 // --- Imports AFTER mocks (hoisting-safe) -------------------------------------
 import { POST } from '@/app/api/chat/route'
@@ -664,18 +678,24 @@ describe('POST /api/chat — client disconnect', () => {
 })
 
 // =============================================================================
-// PLAN 05-03: AUTH DISCRIMINANTS (token_expired / wrong_tenant / unauthorized)
+// PLAN 05.1-04: AUTH DISCRIMINANTS (session_expired / forbidden / unauthorized)
 // =============================================================================
 //
 // These tests inject the three _middleware AuthResult error variants via the
-// authOverride hook defined in the vi.mock factory above. Real-JWT synthesis
-// is covered in src/app/api/__tests__/_middleware.test.ts (Task 1). Here we
-// only verify the ROUTE'S translation of each variant → HTTP status + JSON
-// body + structured log line.
+// authOverride hook defined in the vi.mock factory above. Session-state
+// synthesis is covered in src/app/api/__tests__/_middleware.test.ts (Plan
+// 05.1-04 Task 1). Here we only verify the ROUTE'S translation of each
+// internal variant → STABLE wire HTTP status + JSON body + structured log
+// line.
+//
+// Wire-code preservation contract:
+//   session_expired (internal) → 401 { error: 'token_expired' } (wire)
+//   forbidden       (internal) → 403 { error: 'access_denied' } (wire)
+//   unauthorized    (internal) → 401 { error: 'unauthorized' }  (wire)
 
-describe('POST /api/chat — Plan 05-03 auth discriminants', () => {
-  it('token_expired → 401 {error:"token_expired"} + X-Request-Id + log.warn with auth_result', async () => {
-    mocks.authOverride.value = { error: 'token_expired' }
+describe('POST /api/chat — Plan 05.1-04 auth discriminants', () => {
+  it('session_expired → 401 {error:"token_expired"} + X-Request-Id + log.warn with auth_result', async () => {
+    mocks.authOverride.value = { error: 'session_expired' }
 
     const res = await POST(makePost(validBody()))
 
@@ -684,6 +704,8 @@ describe('POST /api/chat — Plan 05-03 auth discriminants', () => {
     expect(res.headers.get('x-request-id')).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
     )
+    // WIRE CODE PRESERVED: internal `session_expired` → wire `token_expired`
+    // so ErrorCard + useChatStream + 30+ frontend assertions don't change.
     expect(((await res.json()) as { error: string }).error).toBe('token_expired')
 
     // log.warn fired once; no terminal log.info (single-log-per-completed-
@@ -693,13 +715,17 @@ describe('POST /api/chat — Plan 05-03 auth discriminants', () => {
       .map(line => JSON.parse(line) as Record<string, unknown>)
       .find(entry => entry.msg === 'chat auth failed')
     expect(authLog).toBeTruthy()
-    expect(authLog?.auth_result).toBe('token_expired')
+    // Internal discriminant surfaces in log for operator observability.
+    expect(authLog?.auth_result).toBe('session_expired')
     expect(authLog?.ingress_status_code).toBe(401)
     expect(authLog?.level).toBe(40) // pino warn level
   })
 
-  it('wrong_tenant → 403 {error:"access_denied"} + X-Request-Id + log.warn with auth_result', async () => {
-    mocks.authOverride.value = { error: 'wrong_tenant' }
+  it('forbidden → 403 {error:"access_denied"} + X-Request-Id + log.warn with auth_result', async () => {
+    // The `forbidden` variant carries a `upn` field (the user's email) per
+    // the new AuthResult shape. The route does not surface upn on the wire
+    // — only the access_denied wire code — but accepts it in the union.
+    mocks.authOverride.value = { error: 'forbidden', upn: 'carol@mmc.com' }
 
     const res = await POST(makePost(validBody()))
 
@@ -711,7 +737,7 @@ describe('POST /api/chat — Plan 05-03 auth discriminants', () => {
     const authLog = capturedLines
       .map(line => JSON.parse(line) as Record<string, unknown>)
       .find(entry => entry.msg === 'chat auth failed')
-    expect(authLog?.auth_result).toBe('wrong_tenant')
+    expect(authLog?.auth_result).toBe('forbidden')
     expect(authLog?.ingress_status_code).toBe(403)
   })
 
@@ -731,10 +757,13 @@ describe('POST /api/chat — Plan 05-03 auth discriminants', () => {
   })
 
   it('successful auth: terminal log.info includes auth_result:"success" + sub=oid', async () => {
+    // New AuthResult success shape: { sub, email, roles }. The route logs
+    // `sub` only — email + roles are deliberately NOT surfaced on the wire
+    // or in logs to minimise PII footprint.
     mocks.authOverride.value = {
       sub: 'entra-oid-abc-123',
-      tenantId: '11111111-2222-3333-4444-555555555555',
-      preferredUsername: 'alice@mmc.com',
+      email: 'alice@mmc.com',
+      roles: ['KbAssistant.User'],
     }
     mockStreamAnswer.mockResolvedValue({
       response: {
@@ -755,9 +784,10 @@ describe('POST /api/chat — Plan 05-03 auth discriminants', () => {
     expect(last.msg).toBe('chat request completed')
     expect(last.auth_result).toBe('success')
     expect(last.sub).toBe('entra-oid-abc-123')
-    // preferred_username + tid deliberately NOT logged to minimise PII
-    // footprint. sub alone is enough for operator correlation.
-    expect(last.preferred_username).toBeUndefined()
-    expect(last.tenantId).toBeUndefined()
+    // email + roles deliberately NOT logged to minimise PII footprint.
+    // `sub` alone is enough for operator correlation back to the Entra
+    // directory.
+    expect(last.email).toBeUndefined()
+    expect(last.roles).toBeUndefined()
   })
 })
