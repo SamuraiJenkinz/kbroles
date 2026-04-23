@@ -11,10 +11,10 @@ See: .planning/ROADMAP.md (6 phases, standard depth)
 
 ## Current Position
 
-Phase: 3 of 6 (Role Experience & Chat UI) — COMPLETE
+Phase: 3 of 6 (Role Experience & Chat UI) — COMPLETE + VERIFIED
 Plan: 6 (e2e-success-criteria) — COMPLETE
-Status: Phase 3 complete — 14 Playwright E2E specs green (all 5 SCs + Pitfall 13 + Pitfall 17); 355 unit tests + 14 E2E tests = 369 total. Phase 4 UNBLOCKED.
-Last activity: 2026-04-23 — Completed 03-06-e2e-success-criteria-PLAN.md. Commits b04eae5 (test SC#1+SC#2+fixtures) / 5bd69f4 (test SC#3/SC#4/SC#5+Pitfall13/17).
+Status: Phase 3 complete + verified — verifier returned `human_needed` (5/5 programmatic SCs PASS; 2 UX items untestable in Playwright: typing-dots animation + hover-timestamp tooltip). User confirmed both via browser 2026-04-22; VERIFICATION.md status flipped to `passed`. 355 unit tests + 14 E2E = 369 total green. All 5 pitfalls (4, 13, 16, 17, 18) have dedicated coverage. Phase 4 UNBLOCKED.
+Last activity: 2026-04-22 — Phase 3 verification closed: human approved typing-dots animation + hover timestamp tooltip in real browser.
 
 Progress: [████████████████████████] Phase 1–3 of 6 complete; Phase 4 pending
 
@@ -235,6 +235,11 @@ None.
 - ~~Corporate CA chain for outbound HTTPS from App Service to MGTI~~ — RESOLVED 2026-04-22: prod-mode Smoke 5 PASS (transitive on Smokes 1/2/3 succeeding against MGTI without UNABLE_TO_VERIFY_LEAF_SIGNATURE)
 - App Service provisioning ownership (who creates the Azure resources) — Phase 5
 - Named Content Steward for monthly rejected-article pull from ServiceNow — Phase 6 pilot prep
+
+**Phase 3 verification (2026-04-22):**
+- Verifier `human_needed`: 5/5 Success Criteria structurally verified against codebase (RoleSelect icon+colour pair, role-keyed Greeting + 5/8 chip counts, MessageList TypingDots guard, InputBar Enter/Shift+Enter, AssistantControls copy-with-citation-suffix, FeedbackPanel 4-option RadioGroup with zero free-text, Pitfall-13 order stop→clear→setRole→clearDraft, Pitfall-18 Cancel autoFocus, Pitfall-4 role-as-send-parameter, Pitfall-17 addInitScript reload pattern); all 16 Phase-3 requirements covered; 355 unit + 14 E2E tests green; `pnpm typecheck` clean.
+- Two UX items needed human browser test: three-dot typing indicator animation (Playwright `route.fulfill()` delivers whole response atomically — no observable gap between `assistant/start` and `answer_delta`) and hover-timestamp tooltip (Radix Tooltip portal only renders on real hover). Code paths were structurally correct; user confirmed both render correctly at `pnpm dev`.
+- Final state: 369/369 tests green; `pnpm typecheck` clean; VERIFICATION.md at `.planning/phases/03-role-experience-and-chat-ui/03-VERIFICATION.md` status flipped to `passed`.
 
 **Phase 2 verification (2026-04-22):**
 - Verifier `human_needed`: 47/47 programmatic must-haves PASS; SC#1 + SC#2 + streaming cadence required live curls.

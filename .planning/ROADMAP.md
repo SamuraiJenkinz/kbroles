@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Grounding Foundation** — Source registry, citation contract, validator, LLM client, and MGTI smoke tests
 - [x] **Phase 2: Chat Backend (BFF)** — Streaming /api/chat with citation hold, fallback trigger, and entity-allowlist post-check
-- [ ] **Phase 3: Role Experience & Chat UI** — Role select, role-aware chat, input, messages, feedback, and utility actions
+- [x] **Phase 3: Role Experience & Chat UI** — Role select, role-aware chat, input, messages, feedback, and utility actions
 - [ ] **Phase 4: Source Panel, Trust & Fallback UI** — Source panel, colour coding, freshness, about-tooltip, distinct fallback UI, flag-a-gap
 - [ ] **Phase 5: SSO & Teams Delivery** — NAA client auth, Teams manifest, App Service deployment, CI/CD
 - [ ] **Phase 6: Telemetry, Evals & Pilot Hardening** — App Insights schema, eval suite hardening, rejected-article pull, pilot prep
@@ -96,12 +96,12 @@ Plans:
 **Plans**: 6 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Scaffold Tailwind v4 + Radix + lucide + RTL/jsdom/Playwright + root app shell (layout, globals.css, providers, placeholder page)
-- [ ] 03-02-PLAN.md — Pure primitives: mirrored wire types, pure chatReducer, formatRelative, sourceTitles (all node-env testable)
-- [ ] 03-03-PLAN.md — Persistence & stream hooks: useRolePersistence, useDraftBuffer, useChatStream with Pitfall-4 + Pitfall-5 tests
-- [ ] 03-04-PLAN.md — Presentational components: RoleSelect, Message/List, TypingDots, ChipRow, InputBar, Timestamp, AssistantControls, FeedbackPanel, ChangeRoleDialog, ErrorCard, Header
-- [ ] 03-05-PLAN.md — ChatPage + ChatSurface wiring with Pitfall-13 change-role ordering + retry flow; replaces app/page.tsx
-- [ ] 03-06-PLAN.md — Playwright E2E covering all 5 Success Criteria + Pitfall-13 + Pitfall-17 regressions
+- [x] 01-scaffold-ui-stack-PLAN.md — Scaffold Tailwind v4 + Radix + lucide + RTL/jsdom/Playwright + root app shell (complete 2026-04-22)
+- [x] 02-pure-primitives-PLAN.md — Mirrored wire types, pure chatReducer, formatRelative, sourceTitles (complete 2026-04-22)
+- [x] 03-persistence-and-stream-hooks-PLAN.md — useRolePersistence, useDraftBuffer, useChatStream with Pitfall-4 + Pitfall-5 tests (complete 2026-04-22)
+- [x] 04-presentational-components-PLAN.md — 13 stateless components + cn helper; InputBar forwardRef + Message/List onRetry contracts locked (complete 2026-04-22)
+- [x] 05-chat-page-wiring-PLAN.md — ChatPage + ChatSurface wiring with Pitfall-13 ordering + retry flow; page.tsx replaced (complete 2026-04-22)
+- [x] 06-e2e-success-criteria-PLAN.md — 14 Playwright specs covering all 5 SCs + Pitfall-13 + Pitfall-17 regressions (complete 2026-04-22)
 
 ---
 
@@ -177,7 +177,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Grounding Foundation | 5/5 | Complete | 2026-04-22 |
 | 2. Chat Backend (BFF) | 4/4 | Complete | 2026-04-22 |
-| 3. Role Experience & Chat UI | 0/TBD | Not started | - |
+| 3. Role Experience & Chat UI | 6/6 | Complete | 2026-04-22 |
 | 4. Source Panel, Trust & Fallback UI | 0/TBD | Not started | - |
 | 5. SSO & Teams Delivery | 0/TBD | Not started | - |
 | 6. Telemetry, Evals & Pilot Hardening | 0/TBD | Not started | - |
