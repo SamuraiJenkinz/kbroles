@@ -122,7 +122,13 @@ Plans:
 
 **Pitfall focus**: Pitfall 19 (anchor IDs derived from section markers, not titles — verified by automated anchor-check), Pitfall 20 (fallback visually distinct so users don't mistake it for a grounded answer), Pitfall 16 (icon pairing on every colour-coded element for accessibility)
 
-**Plans**: TBD (likely 3–4)
+**Plans**: 4 plans
+
+Plans:
+- [ ] 04-01-source-exposure-and-badge-constants-PLAN.md — canonical sourceBadges.ts + `/api/sources` + `/api/config` + CONTENT_STEWARD_EMAIL env var + dated SNOW_FORM version
+- [ ] 04-02-source-panel-and-chip-integration-PLAN.md — SourcePanel (Radix Dialog desktop pane + mobile drawer) + colour-coded clickable citation chips + ChatSurface wiring
+- [ ] 04-03-fallback-card-trust-header-about-tooltip-PLAN.md — FallbackCard (Pitfall 20 three-signal) + flag-a-gap mailto + freshness line + About Popover
+- [ ] 04-04-e2e-success-criteria-and-anchor-check-PLAN.md — 5 Playwright specs for SC#1–5 + anchorIds.test.ts (Pitfall 19) + Pitfall 16 + Pitfall 20 E2E assertions
 
 ---
 
