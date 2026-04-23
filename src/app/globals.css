@@ -38,3 +38,13 @@ body {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
+
+/* Phase 4: cited-section fade highlight (Pattern 4 from RESEARCH §Section Highlight). */
+@keyframes section-highlight {
+  0%   { background-color: rgb(254 243 199 / 0.6); }  /* amber-100/60 */
+  100% { background-color: transparent; }
+}
+
+[data-highlight="true"] {
+  animation: section-highlight 2s ease-out forwards;
+}
