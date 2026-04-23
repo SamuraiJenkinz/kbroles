@@ -93,7 +93,15 @@ Plans:
 
 **Pitfall focus**: Pitfall 4 (role contamination — role is an explicit parameter in every request; role-change wipes state), Pitfall 13 (successor-role contamination on change), Pitfall 16 (accessibility — colour is never the only signal), Pitfall 17 (session-loss on refresh — local-storage buffer), Pitfall 18 (Change Role needs confirm before wiping work)
 
-**Plans**: TBD (likely 4–5)
+**Plans**: 6 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Scaffold Tailwind v4 + Radix + lucide + RTL/jsdom/Playwright + root app shell (layout, globals.css, providers, placeholder page)
+- [ ] 03-02-PLAN.md — Pure primitives: mirrored wire types, pure chatReducer, formatRelative, sourceTitles (all node-env testable)
+- [ ] 03-03-PLAN.md — Persistence & stream hooks: useRolePersistence, useDraftBuffer, useChatStream with Pitfall-4 + Pitfall-5 tests
+- [ ] 03-04-PLAN.md — Presentational components: RoleSelect, Message/List, TypingDots, ChipRow, InputBar, Timestamp, AssistantControls, FeedbackPanel, ChangeRoleDialog, ErrorCard, Header
+- [ ] 03-05-PLAN.md — ChatPage + ChatSurface wiring with Pitfall-13 change-role ordering + retry flow; replaces app/page.tsx
+- [ ] 03-06-PLAN.md — Playwright E2E covering all 5 Success Criteria + Pitfall-13 + Pitfall-17 regressions
 
 ---
 
