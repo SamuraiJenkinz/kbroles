@@ -16,7 +16,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Chat Backend (BFF)** — Streaming /api/chat with citation hold, fallback trigger, and entity-allowlist post-check
 - [x] **Phase 3: Role Experience & Chat UI** — Role select, role-aware chat, input, messages, feedback, and utility actions
 - [x] **Phase 4: Source Panel, Trust & Fallback UI** — Source panel, colour coding, freshness, about-tooltip, distinct fallback UI, flag-a-gap
-- [ ] **Phase 5: SSO & Teams Delivery** — NAA client auth, Teams manifest, App Service deployment, CI/CD
+- [ ] **Phase 5: SSO & Teams Delivery** — NAA client auth, Teams manifest, App Service deployment, CI/CD (paused — pivoted to 5.1)
+- [ ] **Phase 5.1: MMC-IT BFF pivot (xmcp pattern)** (INSERTED) — Server-side Entra auth + iron-session + on-prem Windows deploy
 - [ ] **Phase 6: Telemetry, Evals & Pilot Hardening** — App Insights schema, eval suite hardening, rejected-article pull, pilot prep
 
 ## Phase Details
@@ -149,7 +150,37 @@ Plans:
 
 **Pitfall focus**: Pitfall 9 (Teams SSO full-client-matrix test — desktop + web + mobile), Pitfall 11 (ingress auth break verified from the Azure-hosted environment, not just from laptop), Pitfall 13 (SSO edge cases — pilot whitelist, guests blocked), Pitfall 8 (deployment pipeline wires the manual re-embed PR flow)
 
-**Plans**: TBD (likely 3–4)
+**Plans**: 5 plans (paused 2026-04-23 — superseded by Phase 5.1 pivot)
+
+Plans:
+- [ ] 05-01-auth-foundation-PLAN.md — deps install (@azure/msal-browser, @azure/msal-react, @microsoft/teams-js, jose, mock-jwks), .npmrc hoisted linker, ENTRA_* env vars, detectHost primitive, MSAL config + nestable singleton
+- [ ] 05-02-health-access-denied-token-expired-PLAN.md — /api/health canary, /access-denied full-page block, token_expired 9th ErrorCode + ErrorCard Sign-back-in CTA
+- [ ] 05-03-middleware-jwt-validation-PLAN.md — replace _middleware.ts stub with jose+JWKS JWT validation; tenant allowlist sole gate; wire token_expired/access_denied/unauthorized into /api/chat
+- [ ] 05-04-auth-provider-redirect-bridge-signout-PLAN.md — AuthProvider + COOP redirect bridge, tokenProvider (silent→redirect browser / silent→popup Teams), Bearer wiring in useChatStream, Header sign-out with draft/in-flight confirm
+- [ ] 05-05-teams-manifest-cicd-deploy-PLAN.md — Teams manifest v1.22 + icons + README with Pitfall-9 matrix, GitHub Actions OIDC deploy workflow with /api/health canary, provisioning + sideload human checkpoint
+
+---
+
+### Phase 5.1: MMC-IT BFF pivot (xmcp pattern) (INSERTED)
+
+**Goal:** Replace Phase 5's SPA+NAA browser auth with the MMC-IT-blessed BFF pattern — server-side Entra auth code flow (@azure/msal-node), iron-session HttpOnly cookie, App Role gating (KbAssistant.User), /api/me BFF contract — and ship a working deploy path to the on-prem Windows Server box (IIS reverse proxy + Windows Scheduled Task + AWS Secrets Manager) with a user-executable Entra App Registration setup doc as the handoff artifact.
+
+**Depends on:** Phase 5
+
+**Plans:** 8 plans
+
+Plans:
+- [ ] 05.1-01-deps-env-secrets-foundation-PLAN.md — Install @azure/msal-node + iron-session + @aws-sdk/client-secrets-manager; add SESSION_SECRET/ENTRA_CLIENT_SECRET/APP_BASE_URL/AWS_* env fields; loadSecrets() module with AWS-first / env-fallback / module cache
+- [ ] 05.1-02-server-auth-library-msalclient-session-PLAN.md — msalClient.ts singleton (ConfidentialClientApplication) + session.ts iron-session wrappers (getSessionOptions/getSession/saveSession/clearSession)
+- [ ] 05.1-03-auth-route-handlers-PLAN.md — /api/login + /api/auth/callback + /api/logout + /api/me route handlers (runtime:'nodejs'; xmcp-matching shapes) with ~15 unit tests
+- [ ] 05.1-04-middleware-chat-route-access-denied-PLAN.md — Swap _middleware.ts from jose JWT to iron-session cookie; chat route forbidden (was wrong_tenant) discriminant; access-denied copy reflects role-failure
+- [ ] 05.1-05-frontend-bff-authprovider-rewire-PLAN.md — Replace MsalProvider with BFF AuthProvider (fetch /api/me); ChatPage via useAuth; strip Bearer attach from useChatStream (credentials:include); sign-out via /api/logout + window reload
+- [ ] 05.1-06-surgical-removal-deps-fixture-PLAN.md — Delete dead @azure/msal-browser/@azure/msal-react/@microsoft/teams-js/jose/mock-jwks; delete src/auth/{detectHost,msalConfig,msalInstance,tokenProvider}.ts + redirect bridge + teams/; rename mockMsal.ts → mockSession.ts (Pitfall 8); strip NEXT_PUBLIC_ENTRA_*
+- [ ] 05.1-07-deploy-workflow-windows-runner-PLAN.md — Rewrite .github/workflows/deploy.yml for self-hosted Windows runner + Windows Scheduled Task (NOT NSSM) + /api/health canary + auto-rollback; rename AZURE_WEBAPP_HOSTNAME → APP_HOSTNAME in remote smoke spec
+- [ ] 05.1-08-operator-docs-entra-windows-roadmap-PLAN.md — docs/entra-app-registration-setup.md + docs/deploy-windows.md + env-handling.md AWS Secrets Manager update + ROADMAP.md AUTH-03/DELV-03 deferral annotations
+
+**Details:**
+Full research at `.planning/phases/05.1-mmc-it-bff-pivot-xmcp-pattern/05.1-RESEARCH.md`. Translates xmcp (Atlas Exchange Infrastructure) auth pattern from Python/Flask to Node/Next. Single-instance pilot (module-level msal-node CCA + iron-session stateless cookie — distributed state deferred to v1.1 follow-up if scales). AUTH-03 (Teams SSO) + DELV-03 (Teams manifest) deferred to v1.1 per RESEARCH + planning context. Pitfall focus: 1 (runtime:'nodejs' mandatory on auth routes), 3 (single-instance msal-node PKCE), 4 (redirect URI exact match — AADSTS50011), 5 (roles claim undefined-vs-empty), 6 (IIS SSE buffering), 8 (Playwright route-mock /api/me), 9 (NEXT_PUBLIC_ENTRA_* dead-code removal), 10 (Next.js 15 async cookies()), 11 (msal-node CCA singleton).
 
 ---
 
@@ -177,7 +208,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 5.1 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -185,7 +216,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Chat Backend (BFF) | 4/4 | Complete | 2026-04-22 |
 | 3. Role Experience & Chat UI | 6/6 | Complete | 2026-04-22 |
 | 4. Source Panel, Trust & Fallback UI | 4/4 | Complete | 2026-04-23 |
-| 5. SSO & Teams Delivery | 0/TBD | Not started | - |
+| 5. SSO & Teams Delivery | 4/5 | Paused (pivoted to 5.1) | 2026-04-23 |
+| 5.1 MMC-IT BFF pivot (xmcp pattern) | 0/8 | Not started | - |
 | 6. Telemetry, Evals & Pilot Hardening | 0/TBD | Not started | - |
 
 ---
