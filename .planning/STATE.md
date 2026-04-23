@@ -7,11 +7,51 @@ See: .planning/REQUIREMENTS.md (49 v1 requirements across 12 categories)
 See: .planning/ROADMAP.md (6 phases, standard depth)
 
 **Core value:** Every answer is verifiable against the authoritative SOP — users read the cited source section without leaving the conversation. No ungrounded answers, no invented field names or approver names.
-**Current focus:** Phase 5 — SSO & Teams Delivery (Phase 4 COMPLETE)
+**Current focus:** Phase 5 PAUSED — architectural pivot to MMC-IT-aligned BFF pattern (see "Phase 5 Pivot Decision" below). Next: `/gsd:insert-phase 5.1` to plan the pivot.
+
+## Phase 5 Pivot Decision (2026-04-23)
+
+**What happened:** After Plans 05-01..04 shipped + Plan 05-05 Tasks 1+2 committed, user pointed at `C:/xmcp/` (Atlas Exchange Infrastructure) as the reference for "how MMC IT actually implements Entra + deployment." Inspection revealed Phase 5 plans built a **fundamentally different architecture** than MMC IT's blessed pattern.
+
+**The divergence (Phase 5 built vs MMC-IT pattern from xmcp):**
+
+| Dimension | Phase 5 built | xmcp / MMC-IT pattern |
+|-----------|---------------|------------------------|
+| Auth flow | SPA + NAA (`createNestablePublicClientApplication`) | Confidential-client auth code flow (server-side MSAL) |
+| Tokens in browser | JWT Bearer attached per `/api/chat` request | **None.** Session cookie only; frontend calls `/api/me` |
+| Backend auth check | `jose` + `createRemoteJWKSet` + `jwtVerify` per request | Session cookie + `@role_required` decorator |
+| Pilot gating | Tenant allowlist (`tid === ENTRA_TENANT_ID`) | **App Role** (e.g. `KbAssistant.User`) — checked in `id_token_claims.roles` |
+| Frontend auth libs | `@azure/msal-browser`, `@azure/msal-react`, `@microsoft/teams-js` | None — plain `fetch('/api/me', {credentials:'include'})` |
+| Redirect URIs | `/auth/redirect` (COOP bridge) + `brk-multihub://<host>` | `/auth/callback` (web only) |
+| Deploy target | Azure App Service Linux + GitHub Actions OIDC | **On-prem Windows Server** + NSSM service + IIS reverse proxy |
+| Secrets | Azure App Service Application Settings | **AWS Secrets Manager** (`/mmc/cts/<app>` in us-east-1) |
+| Teams | Day-1 via NAA manifest | Not in scope for pilot — web-only |
+
+**Decision:** Option 1 — pivot Phase 5 to match xmcp. Chose over Option 2 (Azure App Service, unlikely to be MMC-IT-approved given Atlas precedent) and Option 3 (defer rework to v1.1, carry mismatched code).
+
+**Shipped-but-superseded Phase 5 code:** `src/auth/{detectHost,msalConfig,msalInstance,tokenProvider}.ts`, `src/app/providers.tsx` (MsalProvider wrap), `src/app/auth/redirect/*`, `src/app/api/_middleware.ts` (jose JWT validator), useChatStream Bearer-attach + pre-stream 401/403 branching, ChatSurface `token_expired` retry path, Teams manifest v1.22 + icons, `.github/workflows/deploy.yml`, and `@azure/msal-*` + `@microsoft/teams-js` + `jose` + `mock-jwks` deps. Pivot plans (Phase 5.1) will surgically remove these and replace with BFF equivalents.
+
+**Keepable Phase 5 artifacts (will NOT be reverted in pivot):**
+- `/api/health` endpoint (reuseable canary for any deploy target)
+- `/access-denied` page (copy adjusts from "wrong tenant" → "missing role")
+- `token_expired` as 9th ErrorCode in `src/chat-ui/types.ts` (session-expiry maps to this same UX)
+- ErrorCard "Sign back in" CTA branching
+- Header "Sign out" menu entry (onSignOut callback wiring stays; implementation swaps from `logoutRedirect` to `fetch('/logout')`)
+- Test infrastructure: mock-jwks / MSW tests are discardable, but the 511 pre-Phase-5 unit tests + Phase-3/4 Playwright specs all stay green through the pivot
+
+**Memory saved:** `mmc_it_entra_pattern.md` captures the xmcp pattern as a durable reference for any future MMC-internal app work.
+
+**Phase 5 execution record (for audit):**
+
+- Plans 05-01..04: shipped + tests green at the plan level (567/567 unit + 19/19 E2E at 05-04 close). SUMMARYs written. Plan-level goals met; phase-level goal misaligned with deploy reality.
+- Plan 05-05 Tasks 1+2: committed at a6a3392 (Teams manifest + icons + README) and a7cc970 (deploy.yml + remote smoke + Teams NAA smoke); also included a Rule-3 auto-fix adding `output: 'standalone'` to `next.config.ts`. Task 3 (human-verify gate) did NOT execute — checkpoint paused by the pivot decision before GATE A/B/C were attempted.
+- Plan 05-05 SUMMARY.md + plan-completion commit NOT written — plan is superseded by pivot, not complete.
+- Phase verifier NOT run — verifying the wrong-direction architecture is wasted work; pivot plans will define the new phase goal for Phase 5.1.
+- ROADMAP.md NOT updated to mark Phase 5 complete — it isn't. Phase 5.1 will be inserted by `/gsd:insert-phase 5.1` with the new BFF goal; old Phase 5 stays in the roadmap as a documentary record of the false-start path.
 
 ## Current Position
 
-Phase: 5 of 6 (SSO & Teams Delivery) — IN PROGRESS
+Phase: 5 of 6 (SSO & Teams Delivery) — PAUSED; superseded by Phase 5.1 pivot (see decision above)
 Plan: 4 of 5 (auth-provider-redirect-bridge-signout) — COMPLETE (Wave 2, ran parallel with Plan 05-03)
 Status: Plan 05-04 landed the client-side auth runtime that closes the loop with 05-01 (MSAL singleton + detectHost), 05-02 (token_expired ErrorCode + /access-denied page), and 05-03 (pre-stream 401/403 discriminants). `src/auth/tokenProvider.ts` ships host-aware `acquireToken(account?)` (browser silent→redirect | Teams silent→popup — Teams-tab iframe constraint per RESEARCH open-question #2 correction; NOT redirect) + `signOut()` (→ `logoutRedirect({postLogoutRedirectUri:'/'})`). `src/app/providers.tsx` REPLACED: new client-only `AuthProvider` inits MSAL via `useEffect + getMsalInstance()` (async because Plan 05-01's `createNestablePublicClientApplication` factory is async), renders a fallback skeleton until ready, then `<MsalProvider instance={msal}>`, all composed around the pre-existing `Tooltip.Provider`. `/auth/redirect/{page,layout}.tsx` ship the COOP redirect bridge — layout is intentionally a fragment-passthrough (returns `<>{children}</>`; App Router nested layouts REPLACE parent for their segment so this fully overrides root Providers wrap and avoids `interaction_in_progress` on redirect reload — Pitfall 7 guard). `redirect-bridge` subpath export verified present in `@azure/msal-browser@5.8.0` (`package.json exports` field → `./dist/redirect-bridge/redirect_bridge/index.mjs`), no fallback path needed (catch-branch remains defensive only). `ChatPage` gates on MSAL: `inProgress !== 'none' || !isAuthenticated || !hydrated`→skeleton; authenticated + `claims.tid !== ALLOWED_TENANT`→`router.replace('/access-denied')` (explicitly no-ops on `'dev-only-do-not-use-in-prod'` placeholder so local dev + test env don't false-positive); unauth + idle → `acquireToken(null).catch(()=>{})`. `useChatStream` extended with THREE optional DI options (`acquireToken`, `onTokenExpired`, `onAccessDenied`) — no top-level `@/auth/tokenProvider` import at the hook layer (keeps existing Phase-3 unit tests MSAL-free); pre-stream branching on `res.status === 401` (body `token_expired` → dispatch + `onTokenExpired?.()`; else → unauthorized-as-internal) and `res.status === 403` (body `access_denied` → `onAccessDenied?.()` without error dispatch — user leaves chat surface); only 200 responses reach the SSE reader. `ChatSurface` top-level-imports `acquireToken + signOut` (safe here: inside MsalProvider), wires `boundAcquireToken` + `handleAccessDenied` (→ `router.replace('/access-denied')`) into useChatStream, adds a sign-out flow (confirm dialog when draft OR in-flight stream; direct logoutRedirect when clean) with the NEW `handleRetry` async path — when error bubble's errorCode === 'token_expired', `await acquireToken(null)` BEFORE replaying so retry carries fresh Bearer. `Header` adds optional `onSignOut` prop + "Sign out" menu entry in role-pill popover; back-compat preserved. `ChangeRoleDialog` parameterised with optional `title/description/confirmLabel/cancelLabel` (smaller diff than sibling `SignOutDialog.tsx` — structurally 100% duplicate); defaults preserve Phase-3 behaviour. `tests-e2e/fixtures/mockMsal.ts` ships `stubMsalAuthenticated(page)` Playwright helper seeding MSAL v5 sessionStorage (key format `msal.3|<home>|<env>|<tenant>` lowercase pipe-separated + `msal.3.account.keys` pointer — verified against v5.8.0 `BrowserCacheManager.generateAccountKey`) plus a `window.__E2E_MSAL_TOKEN__` test-only bypass that `tokenProvider.acquireToken` short-circuits on (avoids cascading to acquireTokenRedirect when specs don't seed idToken credential entities; production never reads the symbol). All 11 Phase-3/4 Playwright specs wired via beforeEach/per-test. Tests: `src/auth/__tests__/tokenProvider.test.ts` 5 new (silent success / silent→popup Teams / silent→redirect browser / no-account→loginPopup Teams / signOut→logoutRedirect('/')); Header +2 (onSignOut spy fired; hidden when prop omitted); ChatSurface +2 including the EXACT-named `token_expired onRetry calls acquireToken before replay` (mocked acquireToken → fresh-token-xyz; asserts acquireToken invoked BEFORE replay; replay fetch carries `Authorization: Bearer fresh-token-xyz`) and sign-out-with-draft confirm flow. `pnpm typecheck` clean; 567/567 unit tests green (+19 net over 05-03 baseline of 548); 19/19 Playwright E2E specs green. Anti-pattern greps stay empty (`supportsNestedAppAuth`=0, `microsoftTeams.getAuthToken`=0, `getMsalInstance` in `src/app/layout.tsx`=0). DEVIATIONS: 2 Rule-3 auto-fixes — (1) ChatSurface.test.tsx "Returning user" ChatPage test broke after ChatPage added useRouter+useMsal+acquireToken deps → fixed with module-level `vi.mock()` for next/navigation + @azure/msal-react + @/auth/tokenProvider + `vi.hoisted()` state; (2) Playwright MSAL account-key format mismatch on first pass (used `-` delimiter + schema-version-less key) → verified actual format via `grep -n generateAccountKey dist/cache/BrowserCacheManager.mjs` and corrected to pipe + `msal.3` prefix + added `window.__E2E_MSAL_TOKEN__` bypass to avoid cascading acquireTokenRedirect when idToken credentials aren't seeded.
 
