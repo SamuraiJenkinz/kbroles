@@ -1,0 +1,83 @@
+name: Deploy to Azure App Service
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  NODE_VERSION: '20.x'
+  AZURE_WEBAPP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test (unit)
+        run: pnpm test
+
+      - name: Build (Next.js standalone)
+        env:
+          NEXT_PUBLIC_ENTRA_CLIENT_ID: ${{ secrets.NEXT_PUBLIC_ENTRA_CLIENT_ID }}
+          NEXT_PUBLIC_ENTRA_TENANT_ID: ${{ secrets.NEXT_PUBLIC_ENTRA_TENANT_ID }}
+        run: pnpm build
+
+      # Pitfall 3: Next.js standalone output OMITS `public/` and `.next/static/`.
+      # Must copy them into the standalone folder before deploying, or the
+      # deployed bundle returns 404 for all public assets and any static asset.
+      - name: Assemble standalone bundle
+        run: |
+          cp -r public .next/standalone/public
+          cp -r .next/static .next/standalone/.next/static
+
+      - name: Azure login (OIDC federated credential)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          package: .next/standalone
+          startup-command: 'node server.js'
+
+      # Sole deploy gate for v1 (CONTEXT § CI/CD pipeline). Does NOT hit
+      # /api/chat — that would burn an MGTI token per push and is deferred
+      # to a Phase-6 nightly scheduled workflow.
+      - name: Canary smoke /api/health
+        env:
+          AZURE_WEBAPP_HOSTNAME: ${{ secrets.AZURE_WEBAPP_HOSTNAME }}
+        run: |
+          # 30s warm-up so App Service finishes swapping the slot / booting.
+          sleep 30
+          RESPONSE=$(curl --fail --max-time 30 --silent "https://${AZURE_WEBAPP_HOSTNAME}/api/health")
+          echo "$RESPONSE"
+          echo "$RESPONSE" | jq -e '.status == "ok"' >/dev/null
