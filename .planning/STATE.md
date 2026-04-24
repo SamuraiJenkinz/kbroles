@@ -2,510 +2,80 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-22)
-See: .planning/REQUIREMENTS.md (49 v1 requirements across 12 categories)
-See: .planning/ROADMAP.md (6 phases, standard depth)
+See: `.planning/PROJECT.md` (updated 2026-04-24 after v1 milestone completion)
+See: `.planning/MILESTONES.md` (v1 Pilot Release shipped 2026-04-24)
+See: `.planning/milestones/v1-ROADMAP.md` (full v1 phase details archived)
+See: `.planning/milestones/v1-REQUIREMENTS.md` (49 v1 requirements, 47 shipped, 2 deferred to v1.1)
+See: `.planning/milestones/v1-MILESTONE-AUDIT.md` (audit passed 2026-04-24; GAP-1 fixed inline)
 
 **Core value:** Every answer is verifiable against the authoritative SOP — users read the cited source section without leaving the conversation. No ungrounded answers, no invented field names or approver names.
-**Current focus:** v1 milestone COMPLETE as of 2026-04-24. All 6 phases + Phase 5.1 pivot shipped. Next: `/gsd:audit-milestone` or `/gsd:complete-milestone`.
 
-## Phase 6 Completion (2026-04-24)
-
-Phase 6 (Telemetry, Evals & Pilot Hardening) shipped in 4 waves with 8 plans (17 plan commits). Phase verifier passed 4/5 must-haves from code; SC#5 (pilot cohort onboarding + ≥50% weekly session) + 3 dashboard/pre-flight items marked human_needed and user-approved as pending-operator-execution.
-
-**Deliverables:**
-- Azure Monitor OTel bootstrap (instrumentation.node.ts) + `trackEvent()` wrapper with pino dual-emit
-- questionHash/hashIdentifier (NFC + salt + SHA-256/16-hex) + getSessionIdHash/getUserIdHash additive exports
-- EventSchema catalog (15 event names) — single source of truth for client + server + workbook KQL
-- 16 trackEvent calls wired into /api/chat pipeline with first-turn gating + PII-absence test enforcement
-- `/api/feedback` + `/api/telemetry` BFF endpoints (iron-session gate, Zod validation, closed-enum sink, PII-key scrub) + sendBeacon+keepalive client helper + 👍/👎/citation-chip/flag-a-gap UI wiring + message_id SSE echo
-- Eval harness: bespoke Vitest runner (vitest.eval.config.ts isolation), 6 suites (entity-allowlist, citation-substring, negative-oos, paired-role, injection-refuse, positional), judge best-of-3 (gpt-4o-mini default ~$0.36/mo), flake quarantine + 10-file history rotation, `pnpm eval:fast` + `eval:slow` + `eval` scripts
-- CI/CD: ci.yml PR gate (typecheck/lint/test/eval:fast), evals-nightly.yml cron 20:00 UTC with issue-open + Teams notify, deploy.yml hard-gate on fast evals + `check-evals` job (48h-green window + 2-consecutive-red block + `skip_eval_gate` bypass), eval-gate-bypass-procedure.md runbook
-- Workbook: ARM template (5 sections — Usage/Quality/Gaps/Health/EvalTrend) with deterministic workbookId; Section 5 documented as inert pending `eval_run_completed` emission follow-up
-- Alerts: alerts.bicep (action group + 4 scheduledQueryRules), provision.sh pulling webhook from AWS Secrets Manager, teams-webhook-validation-procedure.md with Logic-App fallback path
-- Steward loop: scripts/pull-servicenow-feedback.ts with --baseline, scripts/validate-servicenow-schema.ts dry-run, steward-monthly.yml (cron 1st + weekend-skip + issue-open + archive commit), weekly-digest.yml (Sunday 23:00 UTC = Monday 09:00 AEST Teams card with shell-injection-safe jq envelope), content-steward-runbook.md + measurement-plan.md with {{STEWARD_NAME}} placeholders pre-registered per Pitfall 14
-
-**Test baseline:** 728/728 unit + 22/22 E2E green. typecheck clean. `pnpm eval:fast` exits 0 (both deterministic suites pass thresholds). `LLM_JUDGE_API_KEY= pnpm eval:slow` skips cleanly.
-
-**Commit attribution note:** Parallel wave staging races resulted in a few cross-plan commits (e.g. 06-02's eventSchema.ts + chat route changes bundled into 06-05's commits; 06-06's deploy.yml + bypass doc bundled into 06-03's first commit; 06-08's scripts + SECRET_KEYS bundled into 06-07's second commit). All files are present and correct; commit labels are noisy but functionality is complete. Documented in each affected SUMMARY.md.
-
-**Human-needed items (user-approved as pending-operator-execution 2026-04-24):**
-1. Fill {{STEWARD_NAME}}/{{STEWARD_BACKUP_NAME}}/{{SIGNOFF_DATE}} in measurement-plan.md + content-steward-runbook.md before pilot day 1
-2. Pilot cohort onboarding (Entra `KbAssistant.User` role grant, URL share, About tooltip confirmation) + ≥50% weekly session tracking across first 2 pilot weeks
-3. Live App Insights dashboard refresh visibility check with connection string configured on Windows deployment
-4. Run `pnpm sn:validate` with live SN credentials; paste output into runbook Schema Validation section
-
-**Final heads per wave:**
-- Wave 1: 5261640 / 7170a81 / 3ce9b05 / efefd9b / 3df5e9d / 5eed709
-- Wave 2: 8a10911 / 6e3048e / 091788a / 1c1e5e7 / b92f387
-- Wave 3: 264944a / 325834e / b48f12e / f00853f / b1c70d7 / 5f91ba1
-- Wave 4: 418e264 / be9d974 / e700632 / 67e979c / 0acb0c1 / 11ce4e2
-
-Phase verification: 06-VERIFICATION.md (status: human_needed, 4/5 must-haves verified from code; 4 operator tasks scoped).
-
-## Phase 5 Pivot Decision (2026-04-23)
-
-**What happened:** After Plans 05-01..04 shipped + Plan 05-05 Tasks 1+2 committed, user pointed at `C:/xmcp/` (Atlas Exchange Infrastructure) as the reference for "how MMC IT actually implements Entra + deployment." Inspection revealed Phase 5 plans built a **fundamentally different architecture** than MMC IT's blessed pattern.
-
-**The divergence (Phase 5 built vs MMC-IT pattern from xmcp):**
-
-| Dimension | Phase 5 built | xmcp / MMC-IT pattern |
-|-----------|---------------|------------------------|
-| Auth flow | SPA + NAA (`createNestablePublicClientApplication`) | Confidential-client auth code flow (server-side MSAL) |
-| Tokens in browser | JWT Bearer attached per `/api/chat` request | **None.** Session cookie only; frontend calls `/api/me` |
-| Backend auth check | `jose` + `createRemoteJWKSet` + `jwtVerify` per request | Session cookie + `@role_required` decorator |
-| Pilot gating | Tenant allowlist (`tid === ENTRA_TENANT_ID`) | **App Role** (e.g. `KbAssistant.User`) — checked in `id_token_claims.roles` |
-| Frontend auth libs | `@azure/msal-browser`, `@azure/msal-react`, `@microsoft/teams-js` | None — plain `fetch('/api/me', {credentials:'include'})` |
-| Redirect URIs | `/auth/redirect` (COOP bridge) + `brk-multihub://<host>` | `/auth/callback` (web only) |
-| Deploy target | Azure App Service Linux + GitHub Actions OIDC | **On-prem Windows Server** + NSSM service + IIS reverse proxy |
-| Secrets | Azure App Service Application Settings | **AWS Secrets Manager** (`/mmc/cts/<app>` in us-east-1) |
-| Teams | Day-1 via NAA manifest | Not in scope for pilot — web-only |
-
-**Decision:** Option 1 — pivot Phase 5 to match xmcp. Chose over Option 2 (Azure App Service, unlikely to be MMC-IT-approved given Atlas precedent) and Option 3 (defer rework to v1.1, carry mismatched code).
-
-**Shipped-but-superseded Phase 5 code:** `src/auth/{detectHost,msalConfig,msalInstance,tokenProvider}.ts`, `src/app/providers.tsx` (MsalProvider wrap), `src/app/auth/redirect/*`, `src/app/api/_middleware.ts` (jose JWT validator), useChatStream Bearer-attach + pre-stream 401/403 branching, ChatSurface `token_expired` retry path, Teams manifest v1.22 + icons, `.github/workflows/deploy.yml`, and `@azure/msal-*` + `@microsoft/teams-js` + `jose` + `mock-jwks` deps. Pivot plans (Phase 5.1) will surgically remove these and replace with BFF equivalents.
-
-**Keepable Phase 5 artifacts (will NOT be reverted in pivot):**
-- `/api/health` endpoint (reuseable canary for any deploy target)
-- `/access-denied` page (copy adjusts from "wrong tenant" → "missing role")
-- `token_expired` as 9th ErrorCode in `src/chat-ui/types.ts` (session-expiry maps to this same UX)
-- ErrorCard "Sign back in" CTA branching
-- Header "Sign out" menu entry (onSignOut callback wiring stays; implementation swaps from `logoutRedirect` to `fetch('/logout')`)
-- Test infrastructure: mock-jwks / MSW tests are discardable, but the 511 pre-Phase-5 unit tests + Phase-3/4 Playwright specs all stay green through the pivot
-
-**Memory saved:** `mmc_it_entra_pattern.md` captures the xmcp pattern as a durable reference for any future MMC-internal app work.
-
-**Phase 5 execution record (for audit):**
-
-- Plans 05-01..04: shipped + tests green at the plan level (567/567 unit + 19/19 E2E at 05-04 close). SUMMARYs written. Plan-level goals met; phase-level goal misaligned with deploy reality.
-- Plan 05-05 Tasks 1+2: committed at a6a3392 (Teams manifest + icons + README) and a7cc970 (deploy.yml + remote smoke + Teams NAA smoke); also included a Rule-3 auto-fix adding `output: 'standalone'` to `next.config.ts`. Task 3 (human-verify gate) did NOT execute — checkpoint paused by the pivot decision before GATE A/B/C were attempted.
-- Plan 05-05 SUMMARY.md + plan-completion commit NOT written — plan is superseded by pivot, not complete.
-- Phase verifier NOT run — verifying the wrong-direction architecture is wasted work; pivot plans will define the new phase goal for Phase 5.1.
-- ROADMAP.md NOT updated to mark Phase 5 complete — it isn't. Phase 5.1 will be inserted by `/gsd:insert-phase 5.1` with the new BFF goal; old Phase 5 stays in the roadmap as a documentary record of the false-start path.
+**Current focus:** v1 Pilot Release complete. Awaiting operator pilot execution and/or `/gsd:new-milestone` to scope v1.1 (candidate directions: Teams delivery, pilot feedback loop, Phase 6 tech-debt drain, Author-Lint features).
 
 ## Current Position
 
-Phase: 6 of 6 (Telemetry, Evals & Pilot Hardening) — COMPLETE (all 8 plans done)
-Plan: 8 of 8 (steward-pull-and-docs) — COMPLETE 2026-04-24
+**Milestone:** v1 Pilot Release — ✅ SHIPPED 2026-04-24
+**Next milestone:** Not yet scoped — run `/gsd:new-milestone` to begin v1.1 (questioning → research → requirements → roadmap)
 
-**Phase 6 Plan 08 summary:** Monthly SN pull automation + weekly Teams digest + content-steward-runbook + pre-registered measurement plan. SECRET_KEYS extended to 11 entries (SERVICENOW_SERVICE_ACCOUNT, SN_INSTANCE, TEAMS_WEBHOOK_URL). scripts/pull-servicenow-feedback.ts: snGet() Basic auth wrapper, kb_knowledge + kb_feedback correlation, feedback_count aggregation, --baseline flag for 90-day pre-pilot snapshot, u_rejection_reason absent → undefined (not string). scripts/validate-servicenow-schema.ts: pre-flight dry-run confirming u_rejection_reason + workflow_state enum. 12 Vitest unit tests (vi.stubGlobal(fetch), 728/728 total). steward-monthly.yml: cron '0 1 1 * *' + workflow_dispatch + weekend-skip (date -u +%u >= 6) + pnpm@9/node20 + AWS creds env vars + actions/github-script@v7 opens issue labelled content-steward with 50-item checklist + decision framework + runbook link + STEWARD_GH_HANDLE auto-assign + archive-commit via github-actions[bot]. weekly-digest.yml: cron '0 23 * * 0' (Sunday 23:00 UTC = Monday 09:00 AEST) + azure/login@v2 + az monitor app-insights query (sessions/users/thumbs_down/fallback/total_requests) + jq -n --arg s "$SUMMARY" Teams post (shell-injection safe) + non-blocking curl. ops/rejected-articles/.gitkeep + README.md. docs/content-steward-runbook.md: {{STEWARD_NAME}}/{{STEWARD_BACKUP_NAME}}/{{SIGNOFF_DATE}} placeholders + ownership + monthly/weekly/ad-hoc cadence + pull procedure + schema-validation section + PR template + escalation table + signoff checklist. docs/measurement-plan.md: 4 pre-registered primary metrics (paired-article-rate with baseline-pre-pilot.json ref, fallback ≤25%, thumbs-down ≤15% per role, 6 eval suite gates) + 5 secondary metrics + 4 pre-registered confounders (article cleanup, seasonal dip, cohort bias, LLM model updates) + data sources + review cadence + signoff checklist. Both YAML files parse-valid (js-yaml confirmed). Live GHA validation is operator task post-merge. Test baseline 728/728 unit + 22/22 E2E. Decisions: ubuntu-latest for SN pull (SN REST is public HTTPS); MessageCard plain-text for Teams digest; --baseline flag reuses same script; STEWARD_GH_HANDLE as repo variable not secret; Teams curl failure non-blocking. Commit attribution: Task 1 files committed under 06-07 concurrent agent commit be9d974 (content correct).
+**Codebase baseline at v1 ship:**
+- 728/728 unit tests green
+- 22/22 Playwright E2E specs green
+- Typecheck clean
+- `pnpm eval:fast` exits 0 (entity-allowlist + citation-substring pass thresholds)
+- `pnpm eval:slow` skips cleanly without `LLM_JUDGE_API_KEY` (operator-gated)
+- ~22,500 LOC TypeScript (src/ + tests-e2e/ + scripts/)
+- 178 commits, fa3270d → c92286e, 339 files changed, +75,513 insertions
 
-**Phase 6 Plan 07 summary:** ARM workbook template (5 KQL sections, deterministic GUID a1b2c3d4-e5f6-7890-abcd-ef1234567890) + Bicep action group (kb-assistant-alerts, useCommonAlertSchema:true) + 4 scheduledQueryRules (P1 kb-p1-chat-5xx 5xx>5%/10m, P2 kb-p2-fallback-rate 25%/1h, P2 kb-p2-thumbs-down-rate 15%/24h, P2 kb-p2-validator-flip-rate 5%/24h) + idempotent provision.sh (bash strict mode, aws secretsmanager fetch, two az deployment group create calls) + Teams webhook validation runbook (curl test, Logic App buffer fallback, {{STEWARD_BACKUP_NAME}} placeholder). Section 5 eval trend KQL is complete but inert on pilot day 1 (eval_run_completed emission follow-up required). Decisions: P1 as scheduledQueryRule for percentage SLO consistency; Teams Logic App documented not pre-built; Section 5 kept inert per plan instruction; webhook URL fetched at runtime from AWS Secrets Manager. Cross-plan note: concurrent 06-08 agent files (scripts/, ops/rejected-articles/) committed under be9d974 due to staging overlap — content correct. Test baseline 728/728 unit (716 + 12 concurrent 06-08 additions). Live Azure validation is operator task post-merge.
+**Tag:** `v1` (2026-04-24)
 
-**Phase 6 Plan 03 summary:** POST /api/feedback + POST /api/telemetry BFF endpoints with iron-session auth guard, Zod validation, and trackEvent() emission; `sendFeedback()` + `sendClientEvent()` browser helpers (sendBeacon + fetch keepalive fallback, fire-and-forget); `/api/chat` emits `message_id` UUID as first SSE frame for client-server correlation; chatReducer captures message_id before answer_delta; AssistantControls calls sendFeedback on thumbs-up/down+reason; ChatSurface calls sendClientEvent('citation_click_through') on chip click; FallbackCard calls sendClientEvent('flag_a_gap_action') on flag-a-gap click; 3 Playwright E2E specs covering SC#4 + FDBK-03 (thumbs-down payload shape, citation chip telemetry, fallback gap flag). Test baseline 716/716 unit + 22/22 E2E (2 skipped remote-smoke). Decisions: SSE Option B (server-generated UUID), sendBeacon+fetch fallback, page.route() interception for E2E (iron-session requires real cookie), closed-enum telemetry event names, PII_KEYS server-side stripping, wrong_citation → 'wrong citation' mapping at call site. Rule-1 auto-fixes: (1) Message.test.tsx onChipClick arity; (2) AssistantControls reason mapping mismatch; (3) route.test.ts frame ordering after message_id SSE addition; (4) keyboard-and-error-retry.spec.ts strict-mode violation with .first().
+Progress: [██████████████████████████████████████████] v1 shipped — 6 phases + Phase 5.1 pivot complete
 
-**Phase 6 Plan 06 summary:** Two-tier eval gating wired into GitHub Actions: `ci.yml` (PR gate: typecheck/lint/test/eval:fast on ubuntu-latest, fast-eval-report artifact 7d); `evals-nightly.yml` (cron 0 20 UTC + workflow_dispatch, pnpm eval with judge secrets, latest.json + history/ + flaky-review.json artifact 30d, failure auto-opens GitHub issue labelled eval-regression with failing suites, non-blocking Teams MessageCard notify via TEAMS_WEBHOOK_URL curl); `deploy.yml` patched (header comment, skip_eval_gate boolean input, Fast evals hard gate in build job between Test and Build, check-evals job with 48h green check + 2-consecutive-red block + listWorkflowRunsForRepo, deploy needs changed to [build, check-evals]); `docs/ops/eval-gate-bypass-procedure.md` 1-page runbook with Incident ID obligation and {{STEWARD_NAME}} placeholder. Phase 5.1 two-job structure preserved verbatim. All three YAML files parse-valid via js-yaml. Test baseline 700/700 unit (687 + concurrent 06-03 additions) + 19/19 E2E. Decisions: MessageCard plain-text Teams notify (no Logic App); 48h nightly window; 2-consecutive-red hard block; fast evals HARD gate (no bypass). Admin must add LLM_JUDGE_API_KEY + LLM_JUDGE_BASE_URL + TEAMS_WEBHOOK_URL secrets + set "verify" branch protection. Task commit race: 06-03 concurrent agent picked up deploy.yml + eval-gate-bypass-procedure.md in commit 264944a — content correct.
+## v1 Milestone Summary
 
-**Phase 6 Plan 05 summary:** LLM judge abstraction (best-of-3 voting, gpt-4o-mini default) + four slow eval suites (neg-oos ≥95%, paired-role ≥98%, injection-refuse ≥95%, positional |t1-t8| ≤ 2pp) + flake quarantine with history rotation. Key artifacts: `src/evals/runner/judge.ts` (createJudgeClient + judgeBinary, 16 unit tests, mocked OpenAI), `src/evals/runner/flakeQuarantine.ts` (computeFlakes + writeFlakeReport, append-only, 10 unit tests), four fixture JSONs (≥10 entries each), four slow eval suites with `it.skipIf(!LLM_JUDGE_API_KEY)`, `_postRun.eval.ts` archiving latest.json → ops/evals/history/<timestamp>.json + 10-file prune + flake sweep, `pnpm eval:slow` script. Decisions: gpt-4o-mini ~100x cheaper than gpt-4o (authorized deviation from CONTEXT.md); direct createLlmClient+streamAnswer for positional suite (no running server in CI); history/ ISO filenames + 10-file cap; append-only flaky-review.json requires human PR to re-trust. Test baseline 687/687 unit; `LLM_JUDGE_API_KEY= pnpm eval:slow` exits 0 (all-skipped verified); no .eval.ts in pnpm test; typecheck clean.
+Six phases that started with the load-bearing grounding layer and built outward through the BFF streaming route, role-aware chat UI, source panel and fallback UI, and finally telemetry + eval hardening. Phase 5 (SPA+NAA + Azure App Service) was paused and superseded by Phase 5.1 (MMC-IT-blessed BFF pattern + on-prem Windows deploy) after the xmcp/Atlas reference revealed an architectural divergence from MMC IT's production pattern.
 
-**Phase 6 Plan 02 summary:** SHA-256 question hashing with NFC normalisation + 15-event App Insights schema + 16 trackEvent() calls at all /api/chat pipeline checkpoints. `src/obs/questionHash.ts` ships `normaliseQuestion` (NFC+lower+whitespace-collapse+trailing-punct+re-trim), `hashQuestion` (16-hex, salt-aware, tolerates empty salt), `hashIdentifier`; `src/auth/session.ts` adds `getSessionIdHash`/`getUserIdHash` (additive, existing API unchanged); `src/obs/eventSchema.ts` is the single source of truth for all 15 event names (EVENT_NAMES const-assertion + EventName type + SessionContext interface with PII-boundary + measurement-key documentation); /api/chat route now emits chat_request_started, session_start+role_selected (first-turn only), chip_vs_freeform, question_hash, fallback_trigger, validator_flip, allowlist_block, citation_returned, ingress_error, chat_request_completed — raw question/answer never emitted. Test baseline 687/687 unit + 19/19 E2E. Decisions: session_id_hash = hashIdentifier(OID) not cookie binary; user_id_hash = hashIdentifier(email/preferred_username); first-turn gating on userMessages.length===1; total_answer_ms kept as measurement key. Rule-1 auto-fixes: (1) trailing-space before punctuation in normaliseQuestion — added second .trim(); (2) route tests broke from trackEvent pino dual-emit order — added vi.mock(@/obs/telemetry) + msg-based log lookup; (3) 'answer' substring in total_answer_ms triggered forbidden-strings test — updated to '"content"' JSON key pattern.
+**Full execution history** (per-plan durations, commit heads, decisions, pitfall notes): see `.planning/milestones/v1-ROADMAP.md` and the individual `SUMMARY.md` files under `.planning/phases/0{1-6}-*/` and `.planning/phases/05.1-mmc-it-bff-pivot-xmcp-pattern/`.
 
-**Phase 6 Plan 04 summary:** `pnpm eval:fast` in 556ms; `src/evals/runner/{types,thresholds,fixtures,report}.ts` + 15 unit tests; `vitest.eval.config.ts` separate from main config (maxWorkers=1 for sequential merge); `vitest.config.mts` excludes `src/evals/suites/**/*.eval.ts` (RESEARCH Pitfall 5); `package.json` adds `eval` + `eval:fast` scripts; 8 entity-allowlist fixtures + 12 citation-substring fixtures (verbatim quotes from KB0022991/KB0020882/SNOW_FORM); both fast suites call Phase 1/2 guards directly; `ops/evals/latest.json` has both SuiteReports with `all_thresholds_met: true`; 622/622 unit tests + 19/19 E2E green. Rule-1 auto-fixes: cit-002 quote had `**bold**` markdown markers (fixed to use clean sentence); concurrent write race in `mergeAndWriteReport` fixed by `maxWorkers=1`.
-
-**Phase 6 Plan 01 summary:** `@azure/monitor-opentelemetry@^1.16.0` + `@opentelemetry/api@^1.9.1` installed; `src/instrumentation.ts` → `src/instrumentation.node.ts` bootstrap wired (loadSecrets → useAzureMonitor, graceful fallback when connection string absent); `src/obs/telemetry.ts` ships synchronous `trackEvent(name, dims, meas)` as the single OTel+pino dual-emit choke point; `SECRET_KEYS` extended to 8 entries (APPLICATIONINSIGHTS_CONNECTION_STRING + QUESTION_HASH_SALT); `EnvSchema` extended; 10 Vitest assertions added; test baseline 622/622 (prior 597 + 10 new); `pnpm build` clean. Rule-3 auto-fixes: vi.hoisted() for Vitest mock hoisting + double-cast for mock.calls TypeScript.
-
-**Phase 5.1 (prior):** 5.1 of 6 (MMC-IT BFF pivot — xmcp pattern) — **COMPLETE 2026-04-24** (all 8 plans + phase verification; 5/5 automated must-haves passed; 5 live-deployment items user-approved as code-complete pending execution of `docs/entra-app-registration-setup.md` + `docs/deploy-windows.md`)
-Plan: 8 of 8 (operator-docs-entra-windows-roadmap) — COMPLETE
-Status: Phase 5.1 shipped the full BFF pivot end-to-end. Server-side auth: `@azure/msal-node@5.1.4` ConfidentialClientApplication singleton (`src/auth/msalClient.ts`, lazy `getCca()` + `__resetCcaForTests()`) + `iron-session@8.0.4` wrapper (`src/auth/session.ts`, `kb_session` httpOnly/secure-prod/lax/maxAge=8h cookie, lazy `getSessionOptions()` per Pitfall 2, async-cookies-aware per Pitfall 10). Four BFF route handlers (`/api/{login,auth/callback,logout,me}`, all `runtime='nodejs'` per Pitfall 1): login → `cca.getAuthCodeUrl` 307 redirect, callback → `acquireTokenByCode` + `saveSession({oid, email:preferred_username, name, roles??[]})` per Pitfall 5, logout → `clearSession` + redirect, me → 200/401/403 xmcp-matching shapes (`authentication_required` | `forbidden`+`upn` | `{displayName,email,oid,roles}`) with `Cache-Control: no-store`. Middleware swapped from jose JWT to iron-session cookie (`src/app/api/_middleware.ts`, AuthResult 4-way union `{sub,email,roles} | {error:'unauthorized'} | {error:'forbidden',upn} | {error:'session_expired'}`; dev-permissive stub preserved for Phase 2/3/4 test isolation; zero jose imports). Chat route maps internal discriminants to **unchanged wire codes** (`session_expired → 401 token_expired`, `forbidden → 403 access_denied`, `unauthorized → 401 unauthorized`) so the frontend ErrorCard + 30+ test assertions stay stable. Access-denied page copy swapped from tenant-wrong to role-missing framing. Frontend fully BFF-driven: `AuthProvider.tsx` (xmcp-matching `loading → authenticated | unauthenticated | forbidden | error` state machine; `fetch('/api/me', credentials:include)` on mount); `ChatPage` branches on `useAuth().status` — unauth → `window.location.href='/api/login'` hard nav (Entra 302 cannot be a Next router transition), forbidden → `router.replace('/access-denied')`. `useChatStream` strips `acquireToken`/`onTokenExpired`/`onAccessDenied` DI options + Bearer attach; `/api/chat` called with `credentials:'include'` so the browser sends the iron-session cookie automatically; pre-stream 401/403 branching preserved (hook still dispatches `assistant/error` with matching code). Sign-out: `fetch('/api/logout')` + `window.location.href='/'`. Token-expired retry: `window.location.href='/api/login'` (no MSAL silent refresh). Surgical cleanup: `pnpm remove @azure/msal-browser @azure/msal-react @microsoft/teams-js jose mock-jwks`; deleted `src/auth/{detectHost,msalConfig,msalInstance,tokenProvider}.ts` + their tests, `src/app/auth/redirect/`, `teams/` folder, `tests-e2e/teams-naa-smoke.spec.ts`; `mockMsal.ts` → `mockSession.ts` fixture swap with `stubBffAuthenticated(page)` route-mock on `/api/me` per Pitfall 8 (cannot seal real iron-session cookie in Playwright without exposing SESSION_SECRET); 11 Playwright specs updated with one-line import swap; `NEXT_PUBLIC_ENTRA_*` zero matches in `src/` + `next.config.ts` per Pitfall 9. Deploy workflow rewritten (`.github/workflows/deploy.yml`) as two-job pipeline: build on `ubuntu-latest` (pnpm install/typecheck/test/build + Pitfall-3 `public/` + `.next/static/` copy + artifact upload), deploy on `[self-hosted, windows, kbassistant]` runner (Windows Scheduled Task via `schtasks /end` + `/run` — NOT NSSM per planning context correction; stop/rotate to `.prev`/extract/start/30s warmup/`Invoke-RestMethod /api/health` canary gated on `{status:'ok'}`/auto-rollback on `if: failure()`). `AZURE_WEBAPP_HOSTNAME` renamed to `APP_HOSTNAME` in remote smoke. Operator docs: `docs/entra-app-registration-setup.md` (203 L, 7 steps: App Registration with Web platform + exact-match redirect URI per Pitfall 4, client secret with 24-month rotation, `KbAssistant.User` App Role per Pitfall 5, Graph User.Read admin consent, Enterprise Application user/group assignment, `aws secretsmanager create-secret` CLI for `/mmc/cts/kb-assistant`, sign-in smoke with AADSTS50011/7000218/403 troubleshooting); `docs/deploy-windows.md` (339 L, 7 steps: Node 20 system-wide install, AWS SDK credential chain verification, deploy dir, Scheduled Task config with `Allow task to be run on demand` + restart-on-failure + machine-scope env vars + PowerShell logging wrapper, IIS reverse proxy with URL Rewrite + ARR `responseBufferLimit=0` + `X-Accel-Buffering:no` header + X-Forwarded-Proto per Pitfall 6, GitHub Actions self-hosted runner `.\config.cmd --runasservice`, first deploy verify, rollback runbook); `docs/env-handling.md` rewritten with AWS Secrets Manager → `loadSecrets()` → `process.env` cascade (dev wins over AWS). ROADMAP.md: Phase 5.1 block fully expanded (goal + 5 success criteria + 8-plan checklist all `[x]` complete 2026-04-23 + Pitfall focus 1/3/4/5/6/8/9/10/11); AUTH-03 + DELV-03 annotated `deferred to v1.1` in Phase 5 Requirements; progress table row `8/8 Complete 2026-04-23`. **Test baseline:** 597/597 unit + 19/19 E2E (+2 remote-smoke skipped cleanly without APP_HOSTNAME); typecheck clean; `pnpm-lock.yaml` reconciled (136 packages pruned via orchestrator-side `pnpm install` after Plan 06's executor sandbox blocked `pnpm remove`). **Phase verifier** produced `05.1-VERIFICATION.md` with `status: human_needed`; user **approved** the 5 live-deployment items as pending-operator-execution (Entra portal + Windows Server + AWS Secrets Manager + pilot user sign-in). Phase 5.1 code-complete and ready to ship.
-
-Plan: 4 of 5 (auth-provider-redirect-bridge-signout) — COMPLETE (Wave 2, ran parallel with Plan 05-03)
-Status (Phase 5, historical, paused): Plan 05-04 landed the client-side auth runtime that closes the loop with 05-01 (MSAL singleton + detectHost), 05-02 (token_expired ErrorCode + /access-denied page), and 05-03 (pre-stream 401/403 discriminants). `src/auth/tokenProvider.ts` ships host-aware `acquireToken(account?)` (browser silent→redirect | Teams silent→popup — Teams-tab iframe constraint per RESEARCH open-question #2 correction; NOT redirect) + `signOut()` (→ `logoutRedirect({postLogoutRedirectUri:'/'})`). `src/app/providers.tsx` REPLACED: new client-only `AuthProvider` inits MSAL via `useEffect + getMsalInstance()` (async because Plan 05-01's `createNestablePublicClientApplication` factory is async), renders a fallback skeleton until ready, then `<MsalProvider instance={msal}>`, all composed around the pre-existing `Tooltip.Provider`. `/auth/redirect/{page,layout}.tsx` ship the COOP redirect bridge — layout is intentionally a fragment-passthrough (returns `<>{children}</>`; App Router nested layouts REPLACE parent for their segment so this fully overrides root Providers wrap and avoids `interaction_in_progress` on redirect reload — Pitfall 7 guard). `redirect-bridge` subpath export verified present in `@azure/msal-browser@5.8.0` (`package.json exports` field → `./dist/redirect-bridge/redirect_bridge/index.mjs`), no fallback path needed (catch-branch remains defensive only). `ChatPage` gates on MSAL: `inProgress !== 'none' || !isAuthenticated || !hydrated`→skeleton; authenticated + `claims.tid !== ALLOWED_TENANT`→`router.replace('/access-denied')` (explicitly no-ops on `'dev-only-do-not-use-in-prod'` placeholder so local dev + test env don't false-positive); unauth + idle → `acquireToken(null).catch(()=>{})`. `useChatStream` extended with THREE optional DI options (`acquireToken`, `onTokenExpired`, `onAccessDenied`) — no top-level `@/auth/tokenProvider` import at the hook layer (keeps existing Phase-3 unit tests MSAL-free); pre-stream branching on `res.status === 401` (body `token_expired` → dispatch + `onTokenExpired?.()`; else → unauthorized-as-internal) and `res.status === 403` (body `access_denied` → `onAccessDenied?.()` without error dispatch — user leaves chat surface); only 200 responses reach the SSE reader. `ChatSurface` top-level-imports `acquireToken + signOut` (safe here: inside MsalProvider), wires `boundAcquireToken` + `handleAccessDenied` (→ `router.replace('/access-denied')`) into useChatStream, adds a sign-out flow (confirm dialog when draft OR in-flight stream; direct logoutRedirect when clean) with the NEW `handleRetry` async path — when error bubble's errorCode === 'token_expired', `await acquireToken(null)` BEFORE replaying so retry carries fresh Bearer. `Header` adds optional `onSignOut` prop + "Sign out" menu entry in role-pill popover; back-compat preserved. `ChangeRoleDialog` parameterised with optional `title/description/confirmLabel/cancelLabel` (smaller diff than sibling `SignOutDialog.tsx` — structurally 100% duplicate); defaults preserve Phase-3 behaviour. `tests-e2e/fixtures/mockMsal.ts` ships `stubMsalAuthenticated(page)` Playwright helper seeding MSAL v5 sessionStorage (key format `msal.3|<home>|<env>|<tenant>` lowercase pipe-separated + `msal.3.account.keys` pointer — verified against v5.8.0 `BrowserCacheManager.generateAccountKey`) plus a `window.__E2E_MSAL_TOKEN__` test-only bypass that `tokenProvider.acquireToken` short-circuits on (avoids cascading to acquireTokenRedirect when specs don't seed idToken credential entities; production never reads the symbol). All 11 Phase-3/4 Playwright specs wired via beforeEach/per-test. Tests: `src/auth/__tests__/tokenProvider.test.ts` 5 new (silent success / silent→popup Teams / silent→redirect browser / no-account→loginPopup Teams / signOut→logoutRedirect('/')); Header +2 (onSignOut spy fired; hidden when prop omitted); ChatSurface +2 including the EXACT-named `token_expired onRetry calls acquireToken before replay` (mocked acquireToken → fresh-token-xyz; asserts acquireToken invoked BEFORE replay; replay fetch carries `Authorization: Bearer fresh-token-xyz`) and sign-out-with-draft confirm flow. `pnpm typecheck` clean; 567/567 unit tests green (+19 net over 05-03 baseline of 548); 19/19 Playwright E2E specs green. Anti-pattern greps stay empty (`supportsNestedAppAuth`=0, `microsoftTeams.getAuthToken`=0, `getMsalInstance` in `src/app/layout.tsx`=0). DEVIATIONS: 2 Rule-3 auto-fixes — (1) ChatSurface.test.tsx "Returning user" ChatPage test broke after ChatPage added useRouter+useMsal+acquireToken deps → fixed with module-level `vi.mock()` for next/navigation + @azure/msal-react + @/auth/tokenProvider + `vi.hoisted()` state; (2) Playwright MSAL account-key format mismatch on first pass (used `-` delimiter + schema-version-less key) → verified actual format via `grep -n generateAccountKey dist/cache/BrowserCacheManager.mjs` and corrected to pipe + `msal.3` prefix + added `window.__E2E_MSAL_TOKEN__` bypass to avoid cascading acquireTokenRedirect when idToken credentials aren't seeded.
-
-**Plan 05-03 (prior)** — Plan 05-03 COMPLETE. `src/app/api/_middleware.ts` real jose-backed Entra JWT validator; AuthResult four-way discriminated union; `/api/chat` translates to 401/403 pre-stream JSON; 507/507 non-UI tests green.
-
-**Plan 05-02 (prior)** — Plan 05-02 COMPLETE. `/api/health` canary + `/access-denied` page + client-side `token_expired` 9th ErrorCode + `Sign back in` CTA. 548/548 unit tests green (+16 net).
-
-**Plan 05-01 (prior)** — Plan 05-01 COMPLETE. Deps (@azure/msal-browser@5.8.0, @azure/msal-react@5.3.1, @microsoft/teams-js@2.52.0, jose@6.2.2, mock-jwks@3.3.5). `.npmrc node-linker=hoisted`. EnvSchema +ENTRA_*. `src/auth/{detectHost,msalConfig,msalInstance}.ts` shipped.
-
-Last activity: 2026-04-24 — Phase 6 Plan 08 (steward-pull-and-docs) COMPLETE. Commits: be9d974 (feat: SN scripts + SECRET_KEYS — via 06-07 concurrent agent) / 67e979c (feat: steward-monthly + weekly-digest workflows) / 0acb0c1 (docs: content-steward-runbook + measurement-plan) + this metadata commit. Test baseline 728/728 unit + 22/22 E2E. Decisions: ubuntu-latest for SN pull, MessageCard plain-text Teams digest, --baseline reuses same script, STEWARD_GH_HANDLE as repo variable.
-
-Previous: 2026-04-24 — Phase 6 Plan 07 (workbook-and-alerts) COMPLETE. Commits: 418e264 (feat: workbook ARM template + 5 sections) / be9d974 (feat: bicep alerts + provision.sh + teams-webhook runbook) + this metadata commit. Test baseline 728/728 unit. Decisions: P1 as scheduledQueryRule, Logic App fallback documented not pre-built, Section 5 inert pending follow-up.
-
-Previous: 2026-04-24 — Phase 6 Plan 03 (client-events-and-feedback-endpoint) COMPLETE. Commits: 264944a (feat: BFF endpoints) / 325834e (feat: telemetryClient + UI wiring + message_id SSE echo) / b48f12e (test: playwright e2e feedback round-trip) + this metadata commit. Test baseline 716/716 unit + 22/22 E2E. Decisions: SSE Option B (server UUID), sendBeacon+fetch fallback, page.route() E2E interception, closed-enum telemetry names, PII_KEYS stripping.
-
-Previous: 2026-04-24 — Phase 6 Plan 06 (ci-cd-integration) COMPLETE. Commits: f00853f (feat: ci.yml + evals-nightly.yml) / 264944a (feat: deploy.yml + eval-gate-bypass-procedure.md via concurrent wave staging) + this metadata commit. Test baseline 700/700 unit + 19/19 E2E. Decisions: MessageCard plain-text Teams notify, 48h nightly window, 2-consecutive-red hard block, fast evals HARD gate.
-
-Previous: 2026-04-24 — Phase 6 Plan 02 (question-hash-and-server-events) COMPLETE. Commits: 8a10911 (feat: hash helpers + session exports) / 6e3048e + 091788a (feat: Tasks 2+3 committed via concurrent 06-05 wave) + this metadata commit. Test baseline 687/687 unit + 19/19 E2E. Decisions: session_id_hash=OID hash, user_id_hash=email hash, first-turn gating.
-
-Previous: 2026-04-24 — Phase 6 Plan 05 (slow-suites-and-llm-judge) COMPLETE. Commits: 6e3048e (feat: judge + flakeQuarantine) / 091788a (feat: four slow suites + fixtures + post-run archival) + metadata commit. Test baseline 687/687; pnpm eval:slow exits 0 with all-skipped (no judge key). Decisions: gpt-4o-mini as default judge, direct LLM for positional, append-only flaky-review.json.
-
-Previous: 2026-04-24 — Phase 6 Plan 04 (eval-harness-and-fast-suites) COMPLETE. Commits: efefd9b (feat: eval harness runner) / 3df5e9d (test: fast suites entity-allowlist + citation-substring) + pending metadata commit. Test baseline 622/622; pnpm eval:fast 556ms. Decisions: bespoke Vitest runner over promptfoo, ops/evals/latest.json as CI artifact contract, maxWorkers=1 for sequential merge.
-
-Previous: 2026-04-24 — Phase 6 Plan 01 (telemetry-foundation) COMPLETE. Commits: 5261640 (feat: SDK + secrets + instrumentation) / 7170a81 (feat: trackEvent + tests) + pending metadata commit. Test baseline updated to 622/622. Decisions: OTel distro over classic SDK, dual-emit over pino-transport, synchronous trackEvent(), graceful fallback on absent connection string.
-
-Previous: 2026-04-24 — Phase 5.1 (MMC-IT BFF pivot) COMPLETE + verifier passed + user-approved (human-deploy items tracked as pending-operator-execution). 8 plans × 5 waves × 27 plan/metadata commits + 1 orchestrator lockfile correction (018ba84). Final heads: Wave 1 — d27e249 / e52edb6 / 6ee4f03 / e54dcb6 / a96f804 / f0df9ff; Wave 2 — de258b8 / f8b70c1 / c39091d / b1c071d / adea02a / 9df2387; Wave 3 — 7dabefb / 9346350 / e5aa645; Wave 4 — 561f246 / c357d02 / cad7dbf / 5dc6cfe / 2e09cfc / d0facb4 / 86fcbb5 / 018ba84; Wave 5 — 4d7de2a / 651a8d7 / c7dff73 / 42ecdc0. Phase verification: 05.1-VERIFICATION.md.
-
-Progress: [██████████████████████████████████████████] Phase 6 COMPLETE (all 8/8 plans done); Phases 1–5.1 of 6 complete
-
-Note: Plans 03 and 06 both show COMPLETE for 2026-04-24. Plan 03 was executed concurrently with Plan 06 by separate agents; both are now committed and documented. Plan 07 ran concurrently with Plan 08; 06-08 agent Task 1 files committed under 06-07 commit be9d974 due to staging overlap (content correct). Phase 6 is now fully complete — all 8 plans committed. Phase verifier should be run before pilot day 1.
-
-## Performance Metrics
-
-**Velocity:**
-- Total plans completed: 19
-- Average duration: ~8.6 min active
-- Total execution time: ~184 min active (Plan 01 wall-clock includes ~1h 44min human-loop prod-smoke checkpoint)
-
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 1 — Grounding Foundation | 5 / 5 (complete) | ~31 min | ~6 min |
-| 2 — Chat Backend BFF     | 4 / 4 (complete) | ~50 min active | ~12.5 min |
-| 3 — Role Experience & Chat UI | 6 / 6 complete | ~38 min (Plans 01–06) | ~6.3 min |
-| 4 — Source Panel, Trust & Fallback UI | 4 / 4 complete | ~53 min (Plans 01–04) | ~13.3 min |
-| 5 — SSO & Teams Delivery | 4 / 5 complete | ~34.1 min (Plans 01–04, Wave 1+2 done) | ~8.5 min |
-
-**Recent Trend:**
-- 01-scaffold-registry-schema: 7 min, 8 tasks, 6 feat commits + 1 docs metadata commit, 23/23 tests green
-- 02-citation-validator: 2 min, 4 tasks, 2 feat + 1 test commit + 1 docs metadata commit, 35/35 tests green (12 new)
-- 03-llm-client-factory: 3 min, 5 tasks, 2 feat + 2 test commits + 1 docs metadata commit, 48/48 tests green (13 new)
-- 04-system-prompt-composer: 4 min, 6 tasks, 4 feat + 1 test commit + 1 docs metadata commit, 65/65 tests green (17 new)
-- 05-phase0-smoke: ~15 min active + user-loop, 7 tasks (5 committed + 1 verify-only + 1 deferred prod checkpoint), 1 feat + 1 test + 2 docs commits + 2 orchestrator fixes + 1 plan-metadata commit, 70/70 tests green (5 new CLI parser); dev-mode Smokes 1/2/3 PASS; prod deferred
-- 02-02-chat-primitives: 8 min active, 3 tasks autonomous (no checkpoints), 3 feat commits 81b2410 / 83c3a2b / 6a42198 + pending docs metadata commit, 134/134 tests green (40 new: 6 sse + 13 partialAnswer + 7 allowlist + 8 concurrency + 6 env + 14 requestSchema + 8 suggested; also absorbed 2 logger tests from parallel Plan 01); 6 source modules + entities.ts regex widening + env schema extension
-- 02-01-infra-ops-setup: 17 min active (2 sessions across prod-smoke human checkpoint, wall-clock ~2h 24min); 3 tasks, 1 checkpoint:human-verify (Task 1.1 prod-mode smoke gate); 4 commits d9b5f34 / fd373dd / 60d7aca / b12a77c + pending docs metadata; 137/137 tests green (5 new — but 2 logger tests were already counted in Plan 02's 134 due to wave-1 parallel absorption); pino 10.3.1 + pino-pretty 13.1.3 in deps; Phase 2 entry gate PROD-MODE GREEN — Plan 04 UNBLOCKED
-- 02-03-upstream-resilience: ~10 min active; 3 tasks autonomous (no checkpoints); 3 feat commits 574e1f7 / 0e0acc2 / f0b2313 + pending docs metadata commit; 187/187 tests green (50 new: 13 errors + 17 stream additions + 13 retry + 8 env); src/llm/errors.ts added (five typed error classes + isRetryableUpstream); streamAnswer extended with {response, usage} shape + withRetry wrapper + AbortSignal hook; env.ts extended with four UPSTREAM_* knobs; v1.1 inter-chunk deferral marker with drift-guard test; zero new dependencies
-- 02-04-route-wiring: ~15 min active; 3 tasks autonomous (no checkpoints); 3 commits a5f33ab (feat prompts route) / 2792c5c (feat chat route) / 2559121 (docs client contract) + pending docs metadata commit; 223/223 tests green (36 new: 10 prompts-route + 26 chat-route); src/app/api/chat/route.ts + src/app/api/prompts/route.ts + docs/api-chat-contract.md shipped; all 5 Phase-2 SCs closed with dedicated coverage; zero new dependencies
-- 04-04-e2e-success-criteria-and-anchor-check: ~37 min active; 3 tasks autonomous (no checkpoints); 3 commits de22bb6 (fixtures+anchorIds) / 004ebf4 (SC#1/SC#2/SC#3) / 0954be5 (SC#4/SC#5+Phase-3 regressions); 19/19 E2E specs green + 516/516 unit tests green; 4 Rule-1 auto-fixes (heading strict-mode collision; window guard on reload; aria-label post-click static; Phase-3 chip-count + panel intercept + getByText collision); Phase 4 behaviourally closed
-- 03-06-e2e-success-criteria: ~11 min active; 2 tasks autonomous (no checkpoints); 2 commits b04eae5 (test fixtures+SC#1+SC#2) / 5bd69f4 (test SC#3/SC#4/SC#5+Pitfall13/17); 14/14 E2E specs green + 355/355 unit tests green (369 total); 6 spec files + 1 fixture; 5 Rule-1 auto-fixes (ReadableStream not supported in Playwright v1.59.1; Next.js route-announcer alert collision; chip-label regex collision; Windows clipboard CRLF; addInitScript reload behaviour); Phase 3 behaviourally closed
-- 03-01-scaffold-ui-stack: ~4 min active; 2 tasks (1 chore deps + 1 feat shell); commits 5465be6 (chore) / 19cc9f3 (feat); 264/264 tests green (0 new — Wave 1 tests absorbed into Plan 02 commit); Tailwind v4 + Radix Primitives + lucide-react + Playwright infra; root app shell shipped
-- 03-05-chat-page-wiring: ~12 min active; 2 tasks autonomous (no checkpoints); 2 commits 5b542c6 (feat usePrompts+Greeting+ChatPage+page.tsx) / c9c6bf8 (feat ChatSurface+Pitfall13+retry); 355/355 tests green (15 new: 6 usePrompts + 9 ChatSurface/ChatPage); ChatSurface full wiring shipped; app/page.tsx delivers live chat at /; Pitfall-13 ordering test-asserted; Retry flow + handleRetry; TooltipProvider wrapper for jsdom tests (Rule 3 auto-fix)
-- 03-04-presentational-components: ~8 min active; 2 tasks autonomous (no checkpoints); 2 commits eec6c72 (feat core components) / 51e2d2c (feat InputBar+ChangeRoleDialog+tests); 340/340 tests green (49 new: 9 RoleSelect + 4 Header + 9 InputBar + 11 AssistantControls + 8 ErrorCard + 8 ChangeRoleDialog); 13 components + 6 jsdom test files; @testing-library/jest-dom installed + vitest globals wired; contracts locked for Plan 05: InputBar forwardRef, Message/MessageList onRetry, ChangeRoleDialog "Change role and clear" label
-- 03-03-persistence-and-stream-hooks: ~4 min active; 2 tasks autonomous; commits 9cf726b (feat role+draft hooks) / co-committed with eec6c72; 302/302 tests green (27 new: 8 rolePersistence + 7 draftBuffer + 10 chatStream + 2 useDraftBuffer wave-absorption); useRolePersistence + useDraftBuffer + useChatStream hooks shipped; zero new dependencies
-- 03-02-pure-primitives: ~3 min active; 2 tasks autonomous; commits 960d164 (feat types+reducer) + 19cc9f3 (co-committed wave-1 feat time+sourceTitles); 264/264 tests green (40 new: 20 reducer + 13 time + 7 sourceTitles); wire types + pure chat reducer (12 actions) + formatRelative + sourceTitles; zero new dependencies
-- 03-01-scaffold-ui-stack: ~4 min active; 2 tasks autonomous (no checkpoints); 2 commits 5465be6 (chore deps) / 19cc9f3 (feat shell) + pending docs metadata; 264/264 tests green (absorbed 20 tests from Wave-1 parallel Plan 02: time.ts formatRelative + sourceTitles); Tailwind v4 + 4 Radix packages + lucide-react + clsx + tailwind-merge + @vitejs/plugin-react@5.2.0 + RTL + jsdom + Playwright@1.59.1 + chromium installed; postcss.config.mjs + playwright.config.ts created; root app shell (layout/globals.css/providers/page) live
-- 05-01-auth-foundation: ~5.5 min active; 2 tasks autonomous (no checkpoints); 2 commits 8bf2998 (chore deps+.npmrc+env) / ca833e6 (feat detectHost+msalConfig+msalInstance) + pending docs metadata; 543/543 tests green (16 net-new attributable to 05-01: 5 env + 4 detectHost + 7 msalConfig; additional absorbed from parallel Plan 05-02 wave — ErrorCard token_expired tests); @azure/msal-browser@5.8.0 + @azure/msal-react@5.3.1 + @microsoft/teams-js@2.52.0 + jose@6.2.2 (prod) + mock-jwks@3.3.5 (dev) installed; `.npmrc node-linker=hoisted` created (Pitfall 10 pre-empt); EnvSchema.ENTRA_CLIENT_ID + ENTRA_TENANT_ID added with dev placeholder defaults; src/auth/ library (detectHost + msalConfig + msalInstance) with 11 Vitest tests; anti-pattern greps clean (supportsNestedAppAuth=0, microsoftTeams.getAuthToken=0); 1 Rule-1 auto-fix (MSAL v5 dropped navigateToLoginRequestUrl + storeAuthStateInCookie — removed, in-file comments document the drop, defaults equivalent)
-- 05-03-middleware-jwt-validation: ~9 min active; 2 tasks autonomous (no checkpoints); 2 commits f0925be (feat Task 1 _middleware jose validator + 9 new tests, -3 deleted Phase-2 stub tests) / 677f7bf (feat Task 2 /api/chat discriminants + 4 new tests) + pending docs metadata; 507/507 non-UI tests green (+10 net: 9 _middleware + 4 chat route - 3 deleted middleware); replaced src/app/api/__tests__/middleware.test.ts with _middleware.test.ts (underscore matches module); real JWT validator: createRemoteJWKSet singleton (cooldown 300s, cacheMaxAge 24h) + jwtVerify with issuer /v2.0 + audience bare GUID + clockTolerance 60s; AuthResult four-way discriminated union (success | unauthorized | token_expired | wrong_tenant); dev-permissive path preserved (NODE_ENV≠prod + no Authorization → local-dev stub); /api/chat translates discriminants to 401 token_expired / 403 access_denied / 401 unauthorized pre-stream JSON + log.warn distinct from terminal log.info; terminal log.info gains auth_result:'success' + sub:user.sub (jwt.oid GUID) with explicit PII-minimisation rationale in-file; anti-pattern greps clean; 2 Rule-1/3 auto-fixes (mock-jwks URL-shape bug: base trailing-slash + path no-leading-slash discovery; inter-task async-signature sequencing)
-- 05-02-health-access-denied-token-expired: ~5.6 min active; 2 tasks autonomous (no checkpoints); 2 commits cf3a068 (feat /api/health + /access-denied + 11 new tests) / 75117a1 (feat token_expired 9th ErrorCode + Sign back in CTA + 5 new tests) + pending docs metadata; 548/548 tests green (+16 net: 6 health route + 5 access-denied page + 5 ErrorCard token_expired including 5th it.each permutation); `/api/health` Node-runtime canary with 5s AbortSignal.timeout(5000) + no-cache headers; `/access-denied` leak-invariant enforced (no GUID/tenant/JWT/token in copy); client-side ErrorCode extended with token_expired (server-side sse.ts left for Plan 05-03 to extend); ErrorCard branches primaryLabel + subCopy, onRetry wiring unchanged; no exhaustiveness switch sites existed on errorCode (grep switch (errorCode=0, Record<ErrorCode,=1 which was the TITLE map); Wave-1 parallel with Plan 05-01 — zero file collisions, Plan 05-01's three "residue" notes resolved (those were my Task-2 edits, now atomic-committed); zero new dependencies
-- 05-04-auth-provider-redirect-bridge-signout: ~14 min active; 2 tasks autonomous (no checkpoints); 2 commits b2f5180 (feat tokenProvider + AuthProvider + redirect bridge + 5 new tests) / d5c20e9 (feat ChatSurface auth gating + sign-out + token_expired retry + 4 new tests + 11 E2E specs wired + mockMsal fixture) + pending docs metadata; 567/567 unit tests green (+19 net over 05-03 baseline: 5 tokenProvider + 2 Header sign-out + 2 ChatSurface token_expired/signout + wave absorption); 19/19 Playwright E2E specs green (all 11 Phase-3/4 specs wired to stubMsalAuthenticated via beforeEach); host-aware tokenProvider (browser silent→redirect | Teams silent→popup — Teams-tab iframe constraint, NOT redirect); redirect-bridge subpath export verified present in @azure/msal-browser@5.8.0 via package.json `exports` (no fallback needed); fragment-passthrough nested layout for /auth/redirect (Pitfall 7 guard); ChatPage auth gating (inProgress/unauth/wrong-tenant branches + dev-placeholder no-op); useChatStream three-option DI (acquireToken/onTokenExpired/onAccessDenied) with no top-level tokenProvider import (preserves Phase-3 test isolation); ChatSurface handleRetry async for token_expired path (acquireToken→replay sequence); ChangeRoleDialog parameterised (title/description/confirmLabel/cancelLabel) reused for sign-out confirm; Header +onSignOut optional prop; mockMsal fixture seeds MSAL v5 sessionStorage with correct `msal.3|<home>|<env>|<tenant>` key format (verified against BrowserCacheManager.generateAccountKey source); window.__E2E_MSAL_TOKEN__ test-only bypass in tokenProvider.ts avoids external Entra navigation in E2E (production never reads it); required test name `token_expired onRetry calls acquireToken before replay` asserts fresh-token-xyz replay Authorization header; anti-pattern greps clean; 2 Rule-3 auto-fixes (ChatPage useRouter+useMsal test-context missing → module-level vi.mock at top of ChatSurface.test.tsx; MSAL account-key format verification + __E2E_MSAL_TOKEN__ bypass); zero new dependencies
-
-*Updated after each plan completion*
+**Phase directories** are NOT deleted — they accumulate across milestones as the raw execution history. Phase numbering continues in v1.1 (v1 ended at Phase 6; next integer phase is Phase 7).
 
 ## Accumulated Context
 
-### Roadmap Evolution
+### Roadmap Evolution Across v1
 
-- Phase 5.1 inserted after Phase 5: MMC-IT BFF pivot (xmcp pattern) (URGENT) — pivots Phase 5's SPA+NAA architecture to match MMC-IT's confidential-client BFF pattern (session cookie, App Role gating, on-prem Windows + AWS Secrets Manager). Full context: "Phase 5 Pivot Decision (2026-04-23)" section above. Phase 5 remains in roadmap as documentary record of the superseded false-start path.
+- Phase 5 paused 2026-04-23 and superseded by Phase 5.1 (INSERTED) after xmcp/Atlas reference revealed SPA+NAA + Azure App Service architecture divergence from MMC-IT blessed BFF + on-prem Windows pattern. Phase 5 remains as documentary record in `.planning/milestones/v1-ROADMAP.md`.
+- GAP-1 (skip_eval_gate emergency-bypass broken by GitHub Actions skipped-dependency default) discovered during milestone audit 2026-04-24; fixed inline with one-line `if:` on deploy job (commit c92286e).
 
-### Decisions
+### Open Context for v1.1
 
-Decisions are logged in PROJECT.md Key Decisions table. Load-bearing decisions affecting Phase 1:
+**Deferred from v1:**
+- AUTH-03 (Teams SSO via NAA) — Phase 5.1 pivot decision
+- DELV-03 (Microsoft Teams tab manifest) — Phase 5.1 pivot decision
 
-- Stuff-the-context grounding, no RAG (corpus = 3 docs, fits in 128K)
-- gpt-4o (full), not gpt-4o-mini — grounding adherence non-negotiable
-- Azure OpenAI via MGTI corporate ingress with `api-key` header
-- Dual-mode LLM client (dev=OpenAI Bearer, prod=MGTI api-key) — zero `NODE_ENV` branching
-- Structured output JSON Schema strict mode for citations + server-side quote-substring validation
+**Tech debt (non-blocking, see v1-MILESTONE-AUDIT.md frontmatter `tech_debt` for full list):**
+- TD-1 Workbook Section 5 KQL inert (no code emits `eval_run_completed` events)
+- TD-2 6 events unsurfaced in workbook KQL panels
+- TD-3 `trackEvent(name: string)` not narrowed to `EventName` type
+- TD-4 `mockChatSuccess` fixture lacks `message_id` SSE frame
+- TD-5 Workbook GUID is placeholder (operator-supplied at deploy time)
+- TD-6 Flow E (sign-back-in) unit-only — intentional CI constraint
 
-**Plan 01 decisions:**
+**Pending operator actions before pilot day 1** (16 items, see v1-MILESTONE-AUDIT.md frontmatter `pending_operator_actions`): GHA secrets, AWS Secrets Manager provisioning, Entra App Registration, Windows Server deploy, workbook + alerts provisioning, pilot cohort onboarding, Steward placeholder fills.
 
-| Plan | Decision | Rationale |
-|------|----------|-----------|
-| 01-01 | KB_ID_RE loosened from `\bKB\d{7}\b` to `\bKB\d{5,}\b` | Corpus has both 7-digit (KB0020882, KB0022991) and 8-digit (KB18801781) IDs; RESEARCH.md recommendation was too narrow |
-| 01-01 | Custom `rawMarkdown` Vite plugin instead of `assetsInclude` | Vite's `assetsInclude` returns URL references, not raw content; custom transform plugin matches Turbopack `{ type: 'raw' }` behaviour |
-| 01-01 | Entity extractor scans source.url attribute too | KB18801781 appears only in the SNOW_FORM permalink, never in section body text |
-| 01-01 | Per-task atomic commits (6 feat commits) rather than single combined commit | Follows task_commit_protocol — each task independently revertable |
+### Key Decisions
 
-**Plan 02 decisions:**
+Full log in PROJECT.md Key Decisions table. All v1 decisions marked ✓ Good, ⚠️ Revisit, or — Pending with outcomes.
 
-| Plan | Decision | Rationale |
-|------|----------|-----------|
-| 01-02 | `can_answer=false` is NOT a flip — validator preserves answer/can_answer unchanged, only defensively zeroes citations | CONTEXT.md §2 schema contract: can_answer=false => citations=[]; validator enforces this defensively even if the model sends citations alongside can_answer=false |
-| 01-02 | Empty citations with can_answer=true treated as total-strip (fallback flip), not pass-through | An LLM that claims to answer but provides zero citations is indistinguishable from one whose citations were all stripped; neither is safe to surface |
-| 01-02 | Case-sensitive quote match (no unicode/punctuation folding) | Capitalisation drift signals the model is paraphrasing from memory rather than copying from loaded text — the validator's core hallucination-detection signal |
-| 01-02 | Guarded `Record<string, Source \| undefined>` registry lookup rather than narrowing `cite.source_id` to `SourceId` | LLM response is untrusted input; unknown source_ids must produce `unknown_source_id` flip, not a TypeScript assertion error |
-| 01-02 | Per-task atomic commits (3 feat/test commits + 1 docs metadata commit) | Consistent with Plan 01 pattern; each task independently revertable |
+**Load-bearing decisions carrying into v1.1:**
+- Stuff-the-context grounding (revisit only if corpus grows beyond single-KB scope)
+- BFF pattern + iron-session + App Role gating (Phase 5.1 — adding Teams requires reintroducing NAA alongside BFF)
+- On-prem Windows deploy + AWS Secrets Manager (xmcp-matching)
+- gpt-4o (full) + MGTI corporate ingress
+- Quality-driven timeline (pilot launches on measurement-plan sign-off, not a date)
 
-**Plan 03 decisions:**
+### Memory Captured
 
-| Plan | Decision | Rationale |
-|------|----------|-----------|
-| 01-03 | Ajv promoted from devDependencies → dependencies | Fallback path is production-gated by env().STRICT_SCHEMA_SUPPORTED; code path is runtime-reachable and must resolve at prod bundle import time |
-| 01-03 | Plain-object mock client for streamAnswer tests (not vi.mock) | SUT only needs client.chat.completions.create to be a vi.fn(); inline shape captures per-call params directly without hoisting complexity |
-| 01-03 | `as unknown as { _opts: ... }` cast in tests (not `as any`) | Declares test-mock intent explicitly; satisfies strict TS and survives future linting without functional change |
-| 01-03 | `pnpm remove ajv && pnpm add ajv` to force devDep→dep migration | `pnpm add ajv` alone reports "Already up to date" when entry exists in devDependencies; explicit remove + re-add is the idiomatic fix |
+- `C:\Users\taylo\.claude\projects\C--kbroles\memory\mmc_it_entra_pattern.md` — xmcp/Atlas pattern reference for future MMC-internal app work (BFF + auth code flow + App Roles + on-prem Windows + AWS Secrets Manager)
 
-**Plan 04 decisions:**
+---
 
-| Plan | Decision | Rationale |
-|------|----------|-----------|
-| 01-04 | Few-shot quotes adapted to verbatim source text (markdown `**` preserved, "OPCO or Line of Business" written in full) | Validator normalises whitespace only, not markdown; plan suggested placeholder strings that Plan 01 did not end up authoring — adjustment explicitly permitted by plan ("adapt the quote value at implementation time to a REAL substring") |
-| 01-04 | Added in-test verification loop asserting FEW_SHOTS quotes are verbatim substrings of REGISTRY bodies | Defence in depth: catches registry/fewShots drift at `pnpm test` time rather than waiting for Phase 6 eval fixtures to strip the quote mid-example |
-| 01-04 | Task 4.0 (fallback.ts guard) is a no-op because Plan 02 already committed the file (`1e39e40`) earlier in Wave 2 | Wave-2 race resolved cleanly: plan specified "create if missing"; file existed, verification passed, no duplicate write — no commit needed |
-| 01-04 | Layer-ordering test anchors on `<sources>\\n<source id=` (unambiguous block opening), not the bare `<sources>` string | The string `<sources>` appears twice in the prompt (once in header prose, once at block opening); disambiguating the anchor prevents false-negative on the ordering assertion |
-| 01-04 | Per-task atomic commits (4 feat + 1 test + 1 docs metadata) | Consistent with Plan 01/02/03 precedent; each task independently revertable |
-
-**Plan 02-01 decisions (infra-ops-setup):**
-
-| Plan  | Decision | Rationale |
-|-------|----------|-----------|
-| 02-01 | Prod-mode smoke evidence recorded as representative prose ("PASS; P95 < 500 ms; see operator session log for exact metrics") rather than fabricated numeric values | Operator ran the smoke locally; raw harness stdout was not relayed through the orchestrator. The doc honours the evidence-not-assumption principle by pointing at the authoritative source (operator session log) instead of inventing figures. Future re-runs can append dated blocks with exact numbers. |
-| 02-01 | Helper-wrapper pattern for auth (`getRequestUser` + `_middleware.ts` leading underscore) vs Next.js global `middleware.ts` | Route Handlers in Node runtime don't get the Edge-middleware matcher treatment the same way; per-route `getRequestUser()` call is simpler to swap in Phase 5 (one grep for PHASE 5 REPLACEMENT POINT) and more transparent to trace than a matcher pattern. 02-CONTEXT "Claude's Discretion" explicitly permitted either mechanism. |
-| 02-01 | `env()` surface referenced in a PHASE-5 comment block (not actively called in the stub) — `ENTRA_TENANT_ID` intentionally NOT added to EnvSchema today | The stub short-circuits on `process.env.NODE_ENV` before any env() call would be needed. Adding `ENTRA_TENANT_ID` to EnvSchema now would force Phase-2 tests to stub it. Plan's `key_links.pattern: env\(\)` regex is satisfied by the comment reference, which also documents the Phase-5 wiring point. |
-| 02-01 | Logger test uses a parallel pino instance wired to an in-memory `PassThrough`, not the module-level `logger` export | The real logger's transport is environment-dependent (worker-thread pino-pretty in dev; raw JSON to stdout in prod). Building a hermetic test instance via `pino({level:'debug'}, stream)` tests the CONTRACT (child-field propagation + no-forbidden-strings) without coupling to transport variability. |
-| 02-01 | Smoke 5 (corporate CA chain) status flipped from BLOCKED to PASS on the strength of Smokes 1/2/3 succeeding against MGTI | A successful TLS handshake to the corporate ingress is itself proof the corporate CA chain validated. No separate Smoke 5 harness exists; failure would have surfaced as UNABLE_TO_VERIFY_LEAF_SIGNATURE on the other three smokes. Documented this inference explicitly in the Smoke 5 evidence block. |
-| 02-01 | `Authorization` header check uses `.toLowerCase().startsWith('bearer ')` instead of `.startsWith('Bearer ')` literal | HTTP header values are case-insensitive per RFC 7230; hardening upgrade over the plan snippet. No behavioural change for any known client; Phase 5's real JWT path will enforce this the same way. |
-
-**Plan 02-02 decisions (chat-primitives):**
-
-| Plan  | Decision | Rationale |
-|-------|----------|-----------|
-| 02-02 | chatSemaphore uses LAZY initialization (first-call get) rather than module-load `new AsyncSemaphore(env().MAX_INFLIGHT_STREAMS)` | Module-load env() call forces every test that imports src/chat/* to populate four LLM_* env vars even for tests that never touch the semaphore. Lazy init keeps module imports cheap and test isolation clean. |
-| 02-02 | URL regex trailing-punctuation caveat handled in test fixtures, not regex | The URL regex greedily captures adjacent punctuation; ENTITY_ALLOWLIST harvests URLs from `<source url="...">` attributes (no punctuation). Fixing the regex would require handling Markdown-link parens, URL-encoded parens, trailing dots — non-trivial for a corner case. Positive-path tests author URL + whitespace. |
-| 02-02 | parseChatRequest runs granular field checks BEFORE zod safeParse, uses safeParse as belt-and-suspenders | 02-CONTEXT §4.1 locks 8 specific error codes. Bare zod safeParse produces a tree of generic issues that cannot be mapped 1:1 without fragile error-path string matching. Granular-first keeps codes deterministic; zod remains the type-inference source. |
-| 02-02 | entities.ts regexes widened to named exports rather than duplicated in allowlist.ts | Single source of truth — same regexes feed boot-time ENTITY_ALLOWLIST extraction AND runtime post-check. Duplication would create drift risk where a corpus-format change updates one set but not the other. Task 2.2 action block explicitly permitted. |
-| 02-02 | Release clamped to initialCap — stray double-release cannot inflate capacity | Defensive correctness: a double-release bug in route handler's finally block would otherwise permanently raise the cap. Clamping means a bug causes momentary over-permit-by-zero but never capacity leak. |
-| 02-02 | chatSemaphore exported as wrapper object (tryAcquire/release/available) not direct AsyncSemaphore instance | Wrapper lets __resetForTests swap the underlying instance transparently — callers hold a stable reference that always routes to the current instance. |
-
-**Plan 02-03 decisions (upstream-resilience):**
-
-| Plan  | Decision | Rationale |
-|-------|----------|-----------|
-| 02-03 | StreamAnswerResult exposes usage as `{prompt_tokens, completion_tokens} \| null` — null when upstream omits the block | Some upstream proxies strip completion.usage; logging should still emit the record with usage:null rather than fail or drop. Plan 04's CONTEXT §5 log emitter treats null as "unknown" and still emits. |
-| 02-03 | Refusal short-circuits the Ajv retry loop on fallback path | Retrying a safety-filter refusal produces no new information — the model refuses again. Saves an upstream round-trip and produces a crisper error surface for route-side fallback{reason:'refusal'}. |
-| 02-03 | SchemaRejectAfterRetryError carries original Error via .cause (not message string) | Preserves stack + diagnostic for log-site inspection; route code reads err.cause.message only when detail is needed. |
-| 02-03 | Abort-originated errors must propagate through the Ajv retry loop (isAbortLike guard on both firstErr and retryErr) | Critical: the Ajv fallback retry bypasses withRetry's signal check entirely. Without the guard, an abort in tryOnce() would be treated as a retryable schema failure and the second tryOnce() call would fire even after the route has given up. |
-| 02-03 | Upstream-retry loop (withRetry) is ORTHOGONAL to Ajv schema-reject retry — both loops coexist | They address different failure modes: withRetry retries HTTP errors (429/5xx/network); the Ajv loop retries schema validation failures. Keeping them separate means neither has to understand the other's failure semantics. |
-| 02-03 | withRetry() kept module-private; tests exercise retry policy through streamAnswer | Tests assert observable contract (call counts, thrown types, timing) rather than helper internals. Makes the retry policy an implementation detail that can evolve without churning test suites. |
-| 02-03 | Backoff timing test uses a single "generous window" advance instead of fine-grained microtask boundaries | `vi.advanceTimersByTimeAsync` drains pending microtasks along with timers; tight ms boundaries (+399 / +2) are flaky when multiple retry-continuation microtasks land together. Single +500ms advance proves the >baseMs*2 requirement deterministically. |
-| 02-03 | Non-retryable auth statuses 401/403 reclassify to UpstreamAuthError inside withRetry | Typed for route-side routing (PITFALLS #11 ingress auth break mitigation). Route can alert on auth break distinct from other 4xx. |
-| 02-03 | 422 is NOT reclassified as UpstreamAuthError — propagates raw | Test explicitly asserts `expect(err).not.toBeInstanceOf(UpstreamAuthError)` on 422. Route treats 422 as upstream request-validation failure (input-shape error) distinct from auth break. |
-| 02-03 | runWithFakeTimers test helper attaches pre-emptive `.catch(()=>{})` to the promise | Silences Node PromiseRejectionHandledWarning in the gap between promise creation and the test's `.rejects` handler attachment. Real rejection still propagates (promises cache both states). |
-| 02-03 | v1.1 inter-chunk deferral guarded by drift-guard test (readFileSync + toContain) | CONTEXT §3 locks 20s inter-chunk timeout; facade is `stream: false` today so there's no chunk sequence to time. Test ensures the TODO marker can't be silently removed without landing the feature. |
-
-**Plan 02-04 decisions (route-wiring):**
-
-| Plan  | Decision | Rationale |
-|-------|----------|-----------|
-| 02-04 | makeAnswerTracker() consumes a synthetic `{"answer":"<text>"}` JSON envelope in Phase-2 stream:false facade | Keeps the tracker call-site identical across Phase-2 (one delta) and v1.1 (many deltas). Without the envelope the route would need a Phase-2-only code path `writer.write(encodeSse({type:'answer_delta', text: validated.answer}))` that gets deleted in v1.1 — more churn for no benefit. |
-| 02-04 | X-Request-Id echoed on EVERY response including pre-stream 4xx/5xx | Operators can correlate client-side bug reports ("I got a 400") to server logs without client-side special-casing of 4xx observability. Low-cost hardening (~36 bytes/response). |
-| 02-04 | UpstreamAuthError → wire `error{code:'internal'}` but log `ingress_status_code={401\|403}` | Don't leak credential state to the browser (security hygiene + Pitfall 7), but preserve exact ingress failure code for operators triaging Pitfall 11 (ingress auth break). Wire code 'internal' signals "don't auto-retry"; log code signals "Entra/MGTI broke". |
-| 02-04 | Malformed JSON body → `{error:'messages_missing'}` rather than adding a 9th code | 02-CONTEXT.md §4.1 locks 8 error codes. Adding a 9th would require contract + docs + test updates. messages_missing is semantically correct (unparseable body ≡ messages absent). Client UX unchanged. |
-| 02-04 | Route-level tests mock streamAnswer at module level via vi.hoisted; no real createLlmClient touched | Every primitive is unit-tested in isolation (187 tests pre-existing). Route tests verify orchestration only — event ordering, log shape, error switch, semaphore discipline. One failure surface per test = hermetic results. |
-| 02-04 | IIFE has exactly ONE `log.info(...)` call-site per request (in terminal finally) | Auditing "no raw user-question text in logs" is O(1) — one call-site to review. Multiple log.info calls would multiply the regression surface where future refactor accidentally pivots req.body/answer into extras. |
-| 02-04 | /api/prompts uses `dynamic='force-dynamic'` (REVERSED from initial force-static) | Initial `force-static` choice was wrong: Next's static-cache layer drops the query string at runtime, so `request.url` loses `?role=...` and every real request 400s with `role_required`. Unit tests missed this (direct GET() call bypasses framework URL rewriting). Caught by Phase 2 live-curl verification (commit `157325b`). Proxy caching is still achieved via Cache-Control + shared-cache URL keying. Added drift-guard test `dynamic === 'force-dynamic'`. |
-| 02-04 | vi.hoisted factory pattern for capturing pino instance shared across vi.mock factories | vi.mock factories are hoisted above ordinary top-level declarations; referencing `capturingLogger` defined at test-file top-level throws `ReferenceError: Cannot access X before initialization`. vi.hoisted() guarantees state is initialised before any vi.mock factory runs. Canonical Vitest pattern for shared-state mocks. |
-
-**Plan 03-05 decisions (chat-page-wiring):**
-
-| Plan  | Decision | Rationale |
-|-------|----------|-----------|
-| 03-05 | Never-resolving fetch mock for Stop + Pitfall-13 tests | jsdom ReadableStream pull() returning a never-resolving promise blocks even enqueued initial chunks from being delivered across concurrent async act() boundaries. Observable contract (signal.aborted, no error card, stop-btn disappears) is fully verifiable. Reducer text-preservation proof is in chatReducer.test.ts. |
-| 03-05 | TooltipProvider wrapper in ChatSurface.test.tsx | Timestamp.tsx uses Radix Tooltip.Root which throws without Provider context. Added Providers wrapper function in test setup (Rule 3 blocking fix). |
-| 03-05 | onChangeRole() called inside handleConfirmChangeRole AFTER stop+clear | Pitfall 13 ordering owned in one function in ChatSurface rather than split across components. ChatPage's onChangeRole prop is a pure state setter with no stream knowledge. |
-| 03-05 | asstIdRef.current cleared in every terminal path | Prevents stale handleEvent dispatch after race conditions (stream resolves after clear/stop). |
-
-**Plan 04-01 decisions (source-exposure-and-badge-constants):**
-
-| Plan  | Decision | Rationale |
-|-------|----------|-----------|
-| 04-01 | Badge labels use exact REGISTRY section titles (e.g. 'Knowledge Blocks (Knowledge Team Only)') | Registry parity test asserts badge.label === section.title; abbreviated forms would fail CI |
-| 04-01 | KB0020882/attachments stays blue (source-level), not purple | RESEARCH §78 confirms handover §14 'Attachments purple' refers to SNOW_FORM fields, not KB0020882 |
-| 04-01 | KB0020882/categorisation → amber/Tags (section-level override) | Handover §14 explicitly assigns 'Categories amber' as section-level group |
-| 04-01 | SNOW_FORM version changed from 'live' to '2026-04-23' | TRST-01 freshness line 'Form schema YYYY-MM-DD' requires a parseable date string |
-| 04-01 | /api/config test mocks env() via vi.mock('@/config/env') | Route calls env() which validates LLM_* vars absent from test env; mock returns controlled Env object |
-| 04-01 | sourceTitles.ts Phase-3 legacy keys preserved | UTIL-01 tests reference 'resolution', 'form-fields' etc; removing would break 7 existing tests |
-
-**Plan 04-03 decisions (fallback-card-trust-header-about-tooltip):**
-
-| Plan  | Decision | Rationale |
-|-------|----------|-----------|
-| 04-03 | FallbackCard rendered by MessageList (not Message.tsx) | Clean Pitfall-20 separation — routing at MessageList level prevents any chance of the isFallback branch being re-introduced in Message |
-| 04-03 | Flag link is `<a href={mailtoHref}>` not `window.location.href` | href is part of DOM so Playwright can assert `toHaveAttribute('href', /^mailto:/)` without window.location monkeypatching (unreliable in real Chromium where window.location is non-configurable) |
-| 04-03 | CRLF (%0D%0A) in mailto body | Outlook on Windows renders bare %0A (LF-only) as literal \\n in some configurations; CRLF is the RFC-2368 safe choice |
-| 04-03 | ResizeObserver no-op polyfill inline per test file | Radix Popover's react-use-size hook requires ResizeObserver; jsdom doesn't implement it; inline polyfill keeps scope narrow vs adding to global vitest setup |
-| 04-03 | `localStorage.setItem('about_tooltip_seen_v1', 'true')` in ChatSurface beforeEach | AboutPopover auto-open produces 3 `<li>` bullets counted by `queryAllByRole('listitem')`; seeding seen=true prevents interference with chip-count assertions |
-| 04-03 | Module-level useConfig cache + `__resetConfigCacheForTests()` | Multiple components share one /api/config fetch per page load; test-only reset function keeps hook tests hermetic |
-
-**Plan 04-04 decisions (e2e-success-criteria-and-anchor-check):**
-
-| Plan  | Decision | Rationale |
-|-------|----------|-----------|
-| 04-04 | Use `#section-id` locator instead of `getByRole(heading)` for body content assertions in panel specs | Dialog.Title and body h2 both render section name; strict-mode violation with heading role — scoping to the wrapper div's authored id is unambiguous |
-| 04-04 | `sessionStorage.getItem('__e2e_initialized')` guard (not `window` property) in addInitScript | Window properties reset on page.reload(); sessionStorage survives within the same browser tab — Phase-3 role-contamination.spec.ts established this pattern |
-| 04-04 | `locator('a', {hasText:/Opened in mail client/})` for post-click FallbackCard assertion | FallbackCard's `<a>` aria-label is static; only the text content node changes after setFlagged(true) |
-| 04-04 | `mockChatFallbackPage` name (not overwriting existing `mockChatFallback`) | Existing `mockChatFallback` takes Route not Page; creating a page-level variant alongside preserves Phase-3 call signatures |
-| 04-04 | Phase-3 regression fixes: suppress About popover in beforeEach, close panel before "New conversation", scope chip assertion to getByRole('button') | Phase-4 SourcePanel auto-open + AboutPopover first-run both affect Phase-3 specs that don't mock the new routes or suppress the popover |
-
-**Phase 4 human-verification gap closures (bundled into phase closure, not a new plan):**
-
-| Fix | Decision | Rationale |
-|-----|----------|-----------|
-| 69ac805 | FreshnessLine span changed from `sm:inline` to `sm:block` + `min-w-0 flex-1 truncate` | `display: inline` ignores `overflow: hidden`, so `truncate` was silently inactive. Text overflowed chat column's flex width and was visually clipped by the z-50 SourcePanel when panel opened on desktop. Caught by human browser verification — not in any unit or E2E test. |
-| 5961a06 | Removed manual `id="source-panel-title"` on Dialog.Title AND `aria-labelledby="source-panel-title"` on Dialog.Content; added `data-source-panel="true"` on Dialog.Content for E2E scoping; migrated 3 Playwright specs from aria-labelledby locator to data-source-panel | Radix Dialog auto-wires Title↔Content via `useId()`-generated titleId registered through context. Manual id/aria-labelledby overrides bypass that registration, so Radix's "is a title rendered?" check fails and fires the dev-only "DialogContent requires a DialogTitle" accessibility warning. Plan 02's SUMMARY.md flagged this warning as "harmless" — that was incorrect. **Lesson: dev-overlay warnings are real contract violations, not noise. Never dismiss them during plan execution.** |
-| N/A | Favicon 404 noted as known-deferred | Out of Phase 4 scope; trivial follow-up (add `public/favicon.ico`). Not a regression, not Phase 4 work. |
-
-**Plan 05-01 decisions (auth-foundation):**
-
-| Plan  | Decision | Rationale |
-|-------|----------|-----------|
-| 05-01 | Accepted `@azure/msal-browser@5.8.0` over plan-locked `^5.6.3` | Minor-newer within major 5; plan explicitly permits minor drift ("if pnpm resolves a minor newer, accept it; if a major newer, STOP"). Verified via `node -e require('@azure/msal-browser').createNestablePublicClientApplication` that the NAA factory export is unchanged. |
-| 05-01 | Removed `navigateToLoginRequestUrl: true` from msalConfig (Rule 1 library-drift auto-fix) | MSAL v5's `BrowserAuthOptions` type dropped this field. Default behaviour post-handleRedirectPromise() restores the original request URL from state — functionally equivalent. In-file comment documents the removal. |
-| 05-01 | Removed `storeAuthStateInCookie: false` from msalConfig (Rule 1 library-drift auto-fix) | MSAL v5's `CacheOptions` type dropped this field — IE11-era cookie-fallback was deleted with MSAL v5's evergreen-only pivot. sessionStorage cache is sufficient for all supported browsers. In-file comment documents the removal. |
-| 05-01 | Added 3rd detectHost test case for `initialize()` REJECT path | Plan's 2-test pair only covered resolve + hang. The module's `.catch(() => 'browser')` handler exists for the reject case (e.g. ChannelError when Teams host is present but refuses). Locking this behaviour means Plan 05-04 AuthProvider can rely on detectHost never throwing. |
-| 05-01 | Added SSR-fallback `redirectUri === '/auth/redirect'` test | msalConfig must be safe to import from a server context (doesn't throw at module-load — only `getMsalInstance()` does). Test locks the `typeof window !== 'undefined'` branch so a future refactor cannot silently break SSR imports. |
-| 05-01 | Did NOT stage pre-existing Plan 05-02 residue edits (ErrorCard/types.ts) | When Task 2 began, those files already had uncommitted token_expired-9th-code edits from a parallel Plan 05-02 execution (commit `cf3a068` was made between my Task 1 and Task 2 commits). Per atomic-commit discipline across parallel waves — each plan's executor owns its own file edits. Left them in working tree for the Plan 05-02 continuation. |
-| 05-01 | ENTRA_CLIENT_ID / ENTRA_TENANT_ID are optional with dev-placeholder defaults (NOT required strings) | Phase 2/3/4 test suites load env without Entra values. Forcing them to stub ENTRA_* would touch 200+ existing test calls. Production `loadEnv()` paths still get real values via App Service Application Settings; Plan 03 middleware's JWT verification is the authoritative production guard (`'dev-only-do-not-use-in-prod'` as a tenant GUID would fail JWT issuer match immediately). |
-| 05-01 | EnvSchema extension uses z.string().min(1).optional().default(...) not z.string().default(...) | `.min(1)` rejects empty strings (test proves this), keeping the "if set, must be non-empty" contract. Bare `z.string().default(...)` would accept `ENTRA_CLIENT_ID=''` as valid, which is a silent misconfiguration hazard. |
-
-**Plan 05-02 decisions (health-access-denied-token-expired):**
-
-| Plan  | Decision | Rationale |
-|-------|----------|-----------|
-| 05-02 | Server-side `src/chat/sse.ts` ErrorCode NOT extended with `token_expired` here — deferred to Plan 05-03 | Plan 05-03 owns the `/api/chat` server-side emit path for the 9th code. Client-side ErrorCode union widening (`src/chat-ui/types.ts`) propagates through `SseEvent.error.code` automatically since ErrorCode is a discriminated-union member; the server type stays 4-member until Plan 05-03 wires the emit site. Keeping the two sides in separate commits means server changes can be reverted independently of client UI copy. |
-| 05-02 | Mutable module-level `mockConfigValue` for access-denied null-config fallback test (not `vi.doMock` post-import) | `vi.doMock()` mocks DYNAMIC `import()` calls but does NOT retroactively swap ES-module bindings already imported at top-level — those bindings are frozen when the test file loads. Pattern: single `vi.mock` factory reads `mockConfigValue` (let-mutable) at call time; individual tests flip it to `null` before `render()`. `beforeEach/afterEach` resets to the default mock shape. |
-| 05-02 | No exhaustiveness-switch arms needed anywhere for `token_expired` | Repo-wide grep for `switch (errorCode` returns 0 matches; grep for `Record<ErrorCode,` returns exactly 1 site (`ErrorCard.TITLE`), which was updated. `chatReducer` treats `errorCode` as a pass-through stored field (no branching on value); `useChatStream` propagates the typed value to dispatch without switching. No `'internal'`-mirror arms required. |
-| 05-02 | `/api/health` uses `AbortSignal.timeout(5_000)` (static factory) not `new AbortController()` + `setTimeout` | Node 20.9+ exports `AbortSignal.timeout()` as a static factory that auto-fires after the given ms. Simpler than controller+setTimeout pattern (no cleanup, no timer handle to manage). Aligns with RESEARCH §Pattern 9 which specified this exact call shape. |
-| 05-02 | `/api/health` returns `Cache-Control: no-cache, no-store, must-revalidate` on EVERY response (200 AND 503) | Smoke target MUST bypass all caches — a 200 cached during a previous green deploy could mask a newly-broken deploy for up to the cache TTL. The `must-revalidate` directive also protects against misbehaving proxies that serve stale responses. |
-| 05-02 | `/access-denied` leak-invariant test uses `\b...\b` word boundaries (not bare substring matching) | Prevents false positives from incidental substrings (e.g. "content steward" matches `/steward/` but not `/\btenant\b/`). GUID-prefix regex `[0-9a-f]{8}-[0-9a-f]{4}` (case-insensitive) catches both Entra `tid` and `oid` GUID prefixes; full-GUID match would be overly specific and miss partial leaks. |
-| 05-02 | ErrorCard branches via in-line ternaries on `errorCode === 'token_expired'` rather than a second Record<ErrorCode,...> map | Only two codes have distinct CTA wording today (everything else collapses to Retry). A second Record-map would force 9 entries for a 1:8 split. Ternary keeps the branch tight and co-located with the JSX that uses it. If a third branched code appears, the ternaries can be promoted to a map-lookup at that time. |
-| 05-02 | Wave-1 parallel-commit resolution: Plan 05-01's "residue" note (ErrorCard/types.ts edits left uncommitted) was resolved by Task 2's atomic commit 75117a1 | Plan 05-01's executor ran ahead and saw my Task-2 edits in the working tree but correctly recognised they weren't its files and left them alone. My Plan 05-02 then committed those same edits atomically. This is the clean wave-parallel outcome per GSD atomic-commit discipline; same pattern as Plan 03-02/03-01 Wave-1 absorption in prior phases. |
-| 05-02 | Access-denied page copy deliberately OMITS the word "token" even though CONTEXT §Blocked-user UX only forbids "tenant"/"JWT"/"GUID-shapes" | Defence in depth — "token" is a technical auth term that leaks implementation detail to non-technical users. Test invariant includes `/\btoken\b/i` to lock this. Zero production user benefit from the word; strict absence is the simpler contract. |
-
-**Plan 05-03 decisions (middleware-jwt-validation):**
-
-| Plan  | Decision | Rationale |
-|-------|----------|-----------|
-| 05-03 | `createRemoteJWKSet` cacheMaxAge = 24h (86_400_000 ms) | Entra rotates signing keys rarely (weeks+); JWKS endpoint serves multiple kids during rotation so stale-cache-hits don't break verification mid-rotation. 24h is the safer upper end of research's 1h-24h window given thundering-herd cost of every middleware instance refetching on shared eviction. |
-| 05-03 | `createRemoteJWKSet` cooldownDuration = 300s (5min) | Prevents repeated refetch cycles when a signature fails with a kid not in cache — limits DoS vector against JWKS endpoint if attacker submits tokens signed with unknown kids. 5min is short enough for legitimate rotation to propagate. |
-| 05-03 | `jwtVerify` clockTolerance = 60s | Balances Entra's typical clock-skew allowance against token-reuse exposure window. If pilots report intermittent token_expired correlating with clock drift, extend to 300s (Entra default allowance); requires code edit + redeploy (not an env knob today — consider promoting if operational data warrants). |
-| 05-03 | mock-jwks `start()` thunk over custom `setupServer(mswHandler)` | msw is a transitive dep of mock-jwks, NOT a direct project dep, so `.npmrc node-linker=hoisted` does NOT hoist it — `require('msw/node')` from project root fails with MODULE_NOT_FOUND. mock-jwks' internal `start()` resolves its own nested msw copy; MSW interceptors act on global fetch regardless of which msw instance initialised them. Simpler + zero additional devDependencies. |
-| 05-03 | mock-jwks URL shape: base MUST trailing-slash, path MUST NOT leading-slash | `new URL(path, base)` treats leading-slash paths as ABSOLUTE — replaces the tenant segment in base. Hit as a live bug: with `/discovery/v2.0/keys` + `.../tenant-guid`, URL resolved to `.../discovery/v2.0/keys` (tenant dropped) and mock-handler missed real fetches — AADSTS90002 from real Entra. Fix: `'.../tenant-guid/'` + `'discovery/v2.0/keys'`. Documented inline in test file for future maintainers. |
-| 05-03 | `vi.hoisted` `authOverride` slot in chat route tests defaults to null (pass-through to real `vi.importActual`) | `vi.doMock` can't swap already-bound top-level imports. Mutable-slot pattern lets the 3 new discriminant tests inject `{error:'token_expired' \| 'wrong_tenant' \| 'unauthorized'}` while the existing prod-no-header test keeps exercising the real validator code path. Inject-override-or-pass-through keeps the test matrix honest. |
-| 05-03 | Deleted Phase-2 `middleware.test.ts` wholesale rather than updating | Prior test asserted `{sub:'prod-stub', tenantId:'prod-stub'}` which the real validator cannot produce. New `_middleware.test.ts` name matches the underscore-prefixed module under test (Next.js auto-registration guard) and covers a superset of cases. Atomic net-positive LoC footprint; cleaner history. |
-| 05-03 | `sub` (jwt.oid GUID) added to terminal `log.info` without extending forbidden-substrings logger test allow-list | Logger test locks FIELD NAMES (`user_question`, `messages`, `content`, `answer`, `quote`). `sub` is not in that list; GUID values don't substring-match any forbidden content token. Ran forbidden-substrings test after change — still green. In-file comment on log.info call-site locks the PII-minimisation rationale (no `preferred_username`, no full `tenantId`; `sub` alone is enough for Entra directory correlation). |
-| 05-03 | `/api/chat` uses pre-stream JSON for auth failures (NOT SSE error frames) | Auth is pre-stream; the SSE stream is never opened for auth-fail paths. Same precedent as Phase-2 `rate_limited` (429 JSON), `unauthorized` (401 JSON), parseChatRequest errors (400/413 JSON). `token_expired` and `access_denied` join this family; client-side check for `response.status` + `Content-Type: application/json` BEFORE reading body as SSE is an existing invariant. |
-| 05-03 | `wrong_tenant` maps to 403 `access_denied` (distinct from 401 `unauthorized`) | Semantic: 403 is "authenticated but forbidden" — tells client "don't retry sign-in, you're the wrong user". Plan 05-04's client will route 403 `access_denied` to `/access-denied` page (Plan 05-02); 401 `unauthorized` to MSAL acquireTokenRedirect. The status-code split is the wire contract that makes the routing possible without additional headers/payload inspection. |
-
-**Plan 04-02 decisions (source-panel-and-chip-integration):**
-
-| Plan  | Decision | Rationale |
-|-------|----------|-----------|
-| 04-02 | `ComponentType<any>` for ICONS map in SourcePanel + Message | lucide's `ForwardRefExoticComponent` doesn't satisfy `ComponentType<{ aria-hidden?: boolean }>` — `any` is the pragmatic bypass without altering lucide types |
-| 04-02 | `scrollIntoView` guarded with `typeof` in SourcePanel | jsdom lacks scrollIntoView; guard preserves production scroll + CSS animation without crashing tests |
-| 04-02 | `aria-describedby={undefined}` on Dialog.Content | Suppresses Radix development-mode "Missing Description" warning; semantically correct — panel header IS the description |
-| 04-02 | `getAllByText` / `getAllByRole('dialog')` in tests | Panel KB ID appears in both chip button text and panel header badge; ChangeRoleDialog + SourcePanel both carry role=dialog |
-| 04-02 | defaultHandler in ChatSurface.test extended with /api/sources | ChatSurface auto-opens panel on first citation → useSourceContent fetches /api/sources; without handler, existing tests reject with "Unexpected fetch" |
-| 04-02 | Desktop pane `lg:w-[40vw]` confirmed (supersedes REQUIREMENTS.md ~256px) | CONTEXT.md §PANE-01 authoritative: 40vw persistent pane on >=1024px; design decision NOT a regression |
-| 04-02 | Citation chip existing test updated to getByRole('button') | Chip is now a `<button>` not a text span; getByText(/KB../) fails on multiple matches (chip + panel badge) |
-
-**Plan 03-06 decisions (e2e-success-criteria):**
-
-| Plan  | Decision | Rationale |
-|-------|----------|-----------|
-| 03-06 | mockChatSlow uses 30s delayed-fulfill (no body) — not ReadableStream body | Playwright v1.59.1 route.fulfill accepts only string|Buffer; ReadableStream silently fails. Delay approach leverages isStreaming=true being set BEFORE await fetch() so Stop button is observable. |
-| 03-06 | Stop test validates button visibility + Send re-enable only (no partial text) | No delta delivered before Stop (mock never responds); partial-text-preserved invariant is already proven by chatReducer unit test "stoppedByUser". |
-| 03-06 | Clipboard assertion normalizes CRLF + trailing whitespace before toBe() | Windows clipboard adds trailing spaces on lines when writing \n\n separators; normalization preserves semantic UTIL-01 assertion while tolerating OS behaviour. |
-| 03-06 | getByRole('alert') filtered by hasText — not bare | Next.js injects route-announcer with role="alert"; Playwright strict mode rejects when 2 elements match. Filter targets only the ErrorCard by message content. |
-| 03-06 | addInitScript uses __e2e_initialized flag so page.reload() does NOT re-clear sessionStorage | Raw sessionStorage.clear() in addInitScript fires on every navigation; flag-guarded clear runs once per test lifecycle, allowing Pitfall-17 test to verify role+draft survive reload. |
-| 03-06 | Answer-text assertions use /flag an article by clicking/i not /flag an article/i | Consumer chips contain "How do I flag an article?" which matches the generic regex; after New Conversation/reload chips reappear causing false toHaveCount(0) failures. Full response text is collision-free. |
-
-**Plan 03-04 decisions (presentational-components):**
-
-| Plan  | Decision | Rationale |
-|-------|----------|-----------|
-| 03-04 | @testing-library/jest-dom installed + vitest globals:true | No jest-dom setup existed; existing hook tests didn't use DOM matchers. globals:true required so setup file's expect.extend() runs before vitest injects expect. |
-| 03-04 | `configurable: true` on navigator.clipboard mock | user-event v14 attachClipboardStubToView throws TypeError if property is non-configurable. configurable:true allows user-event to coexist. |
-| 03-04 | Copy tests use raw dispatchEvent, not userEvent.click | user-event v14 replaces navigator.clipboard during setup() even with writeToClipboard:false, losing our spy reference. Raw dispatchEvent bypasses user-event clipboard intercept entirely. |
-| 03-04 | InputBar forwardRef owned by Plan 04, not deferred to Plan 05 | Plan explicitly states contract ownership. Plan 05 is purely compositional. |
-| 03-04 | ChangeRoleDialog confirm label is "Change role and clear" | Selector disambiguation: Header popover option is "Change role" (opens dialog); confirm button is "Change role and clear" (confirms). Prevents E2E selector collision during Radix portal teardown. |
-
-**Plan 03-03 decisions (persistence-and-stream-hooks):**
-
-| Plan  | Decision | Rationale |
-|-------|----------|-----------|
-| 03-03 | Wave-2 parallel commit absorption: Task 3.2 files (useChatStream.ts + test) co-committed in eec6c72 with Plan 04 agent | Both plans ran in Wave 2; Plan 04 agent staged working tree before Task 3.2 commit could fire. All code is correct; no data lost. Same wave-parallel pattern as Plan 03-02 absorption. |
-| 03-03 | send-while-streaming test uses never-resolving fetch Promise (not never-resolving ReadableStream) | jsdom ReadableStream.read() blocks indefinitely when no chunks arrive; aborting the AbortController does not unblock reader.read() in jsdom. Keeping fetch itself as the pending promise allows signal.aborted assertion without a 5s test timeout. |
-| 03-03 | useDraftBuffer debounce tests use real setTimeout (300ms window) instead of vi.useFakeTimers() | Fake timers interact poorly with renderHook's internal async act() flushing when both share the same timer queue. Real 300ms window adds ~1.3s to suite but is deterministic and avoids flaky timer-draining edge cases. |
-
-**Plan 03-02 decisions (pure-primitives):**
-
-| Plan  | Decision | Rationale |
-|-------|----------|-----------|
-| 03-02 | Wave-1 parallel commit absorption: Task 2.2 files co-committed in 19cc9f3 with Plan 01 shell | Both plans ran in Wave 1; Plan 01 agent staged working tree before Plan 02's Task 2.2 commit could fire. All code is correct; no data lost. |
-| 03-02 | DD MMM locale test regex loosened to accept en-US vs en-GB toLocaleDateString ordering | toLocaleDateString(undefined, ...) returns 'Apr 26' on en-US (Windows/Node) vs '26 Apr' on en-GB; test now asserts digit + 3-letter abbreviation independently — invariant preserved |
-| 03-02 | feedback/clear uses destructuring to omit the feedback property entirely (not set to undefined) | Omission is cleaner than explicit undefined for consumers using 'in' checks; TypeScript type narrowing also works cleanly |
-
-**Plan 03-01 decisions (scaffold-ui-stack):**
-
-| Plan  | Decision | Rationale |
-|-------|----------|-----------|
-| 03-01 | @vitejs/plugin-react@5.2.0 (not default 6.0.1) | @6.0.1 requires vite@^8; vitest@3.2.4 ships with vite@7.3.2. 5.2.0 is the latest version whose peer range includes vite 7. Without this pin, vitest JSX transform fails for any .tsx test file. |
-| 03-01 | vitest include widened to .test.tsx; global env stays 'node' | Per-file `// @vitest-environment jsdom` docblock is the Vitest documented pattern for mixed node/jsdom suites. Avoids performance overhead on 264 existing node-env backend tests. |
-| 03-01 | @tailwindcss/postcss (not legacy 'tailwindcss' PostCSS entry) | Tailwind v4 breaking change — the CSS-first approach requires the new dedicated PostCSS plugin. Legacy entry silently produces no utility classes. |
-| 03-01 | page.tsx is a static server component with no Date.now/Math.random | Pitfall 6 — SSR/CSR hydration mismatch prevention. Static markup also serves as visual smoke test that Tailwind compiled correctly (styled vs unstyled). |
-| 03-01 | Radix Tooltip.Provider mounted once at root in providers.tsx | All descendant Tooltip.Root instances inherit delayDuration=300/skipDelayDuration=100 without per-component props. Single 'use client' boundary at root. |
-
-**Plan 05 decisions (Phase-0 findings that constrain Phase 2):**
-
-| Plan | Decision | Rationale |
-|------|----------|-----------|
-| 01-05 | `api.openai.com/v1` honours `response_format: json_schema strict: true` end-to-end — dev-mode path works; prod-mode (MGTI) verification pending | Dev-mode Smoke 2 PASS with `can_answer=true`, a real citation whose quote is a verbatim substring of the loaded source (validator_flips=0). Fallback path (`STRICT_SCHEMA_SUPPORTED=false` + Ajv) already implemented in Plan 03 streamAnswer; prod can flip via one env var if MGTI rejects strict mode. |
-| 01-05 | Dev-mode streaming cadence is a REFERENCE BASELINE only — Pitfall #10 (MGTI APIM buffering) is NOT ruled out | Dev-mode Smoke 3 against api.openai.com: 195 chunks, first-chunk 868ms, P95 inter-chunk 65ms (~10× under 500ms threshold). Proves code path + measurement harness work; does NOT probe APIM buffering. Prod-mode Smoke 3 remains a Phase 2 gate. |
-| 01-05 | `tsx` requires `node --env-file-if-exists=.env.local` wrapping to load env vars (unlike Next.js which auto-loads) | Next.js auto-loads .env.local as part of framework runtime; tsx is a thin ESM loader with no env behaviour. Captured in package.json `smoke` script. Future tsx-invoked scripts in this repo must replicate this pattern. |
-| 01-05 | Source markdown loaded via `readFileSync(fileURLToPath(new URL('./sources/X.md', import.meta.url)))` — NOT `import X from './X.md'` | Static .md imports require framework-specific loaders (Vitest rawMarkdown Vite plugin, Next.js Turbopack raw loader). readFileSync + URL resolution is portable across Vitest / Next.js server / tsx / vanilla Node with zero plugin config. Retrofit applied to `src/grounding/registry.ts` via orchestrator commit `bf696a3`. |
-| 01-05 | Prod-mode Phase-0 smoke deferred to Phase 2 kickoff (non-blocking for Phase 1 closure per Plan 05 Task 5.6 escape hatch) | Plan 05's own guidance: "Phase 1 can close on dev-mode green + prod-mode documented-but-pending if MGTI access is not yet provisioned." User signal at checkpoint 5.6: `blocked: no-mgti-access`. Gates Phase 2 `/api/chat` route construction specifically; does not block Phase 2 planning. |
-
-### Pending Todos
-
-None.
-
-### Blockers/Concerns
-
-**Phase-0 resolutions (Plan 05 outcome; Plan 02-01 closed remaining prod-mode items):**
-- ~~Exact MGTI `baseURL` suffix~~ — RESOLVED 2026-04-22: prod-mode Smoke 1 PASS against MGTI ingress (Plan 02-01 Task 1.1)
-- ~~MGTI honours `response_format: json_schema` strict mode~~ — RESOLVED 2026-04-22: prod-mode Smoke 2 PASS; MGTI honoured strict end-to-end, fallback path unexercised but remains unit-tested
-- ~~MGTI streaming chunk cadence through APIM~~ — RESOLVED 2026-04-22: prod-mode Smoke 3 PASS; P95 inter-chunk < 500 ms; Pitfall #10 (APIM buffering) ruled out
-- Entra admin consent for SPA + `brk-multihub://` redirect URI — deferred to Phase 5 per Plan 05 Smoke 4 (DEFERRED by design)
-- Teams sideload policy (MMC may restrict custom-app sideloading) — Phase 5
-- ~~Corporate CA chain for outbound HTTPS from App Service to MGTI~~ — RESOLVED 2026-04-22: prod-mode Smoke 5 PASS (transitive on Smokes 1/2/3 succeeding against MGTI without UNABLE_TO_VERIFY_LEAF_SIGNATURE)
-- App Service provisioning ownership (who creates the Azure resources) — Phase 5
-- Named Content Steward for monthly rejected-article pull from ServiceNow — Phase 6 pilot prep
-
-**Phase 3 verification (2026-04-22):**
-- Verifier `human_needed`: 5/5 Success Criteria structurally verified against codebase (RoleSelect icon+colour pair, role-keyed Greeting + 5/8 chip counts, MessageList TypingDots guard, InputBar Enter/Shift+Enter, AssistantControls copy-with-citation-suffix, FeedbackPanel 4-option RadioGroup with zero free-text, Pitfall-13 order stop→clear→setRole→clearDraft, Pitfall-18 Cancel autoFocus, Pitfall-4 role-as-send-parameter, Pitfall-17 addInitScript reload pattern); all 16 Phase-3 requirements covered; 355 unit + 14 E2E tests green; `pnpm typecheck` clean.
-- Two UX items needed human browser test: three-dot typing indicator animation (Playwright `route.fulfill()` delivers whole response atomically — no observable gap between `assistant/start` and `answer_delta`) and hover-timestamp tooltip (Radix Tooltip portal only renders on real hover). Code paths were structurally correct; user confirmed both render correctly at `pnpm dev`.
-- Final state: 369/369 tests green; `pnpm typecheck` clean; VERIFICATION.md at `.planning/phases/03-role-experience-and-chat-ui/03-VERIFICATION.md` status flipped to `passed`.
-
-**Phase 2 verification (2026-04-22):**
-- Verifier `human_needed`: 47/47 programmatic must-haves PASS; SC#1 + SC#2 + streaming cadence required live curls.
-- Live curls against dev-mode (api.openai.com, same code path as MGTI): Happy-path PASS (author "Resolution field" → `answer_delta` with KB0020882 content → one `citations` frame with valid quote substring → `done{can_answer:true, validator_flips:1}`; all locked response headers present including `X-Request-Id`). Adversarial PASS (consumer "capital of France" → single `fallback{reason:can_answer_false, text:<verbatim handover §15 copy>}`; zero `answer_delta`, zero `citations`, zero `done`).
-- Bug found + fixed: `/api/prompts` was `dynamic='force-static'` which strips query params at runtime. Switched to `force-dynamic`; added drift-guard test; route now 200s for both roles. See commit `157325b`.
-- Next 16.2.4 auto-updated `tsconfig.json` (added `.next/types/**/*.ts` include + generated `next-env.d.ts`) and the new types pulled in a stricter `ProcessEnv` augmentation. Widened `as NodeJS.ProcessEnv` → `as unknown as NodeJS.ProcessEnv` in `src/config/__tests__/env.test.ts`. See commit `9642020`.
-- Final state: 224/224 tests green; `pnpm typecheck` clean; VERIFICATION.md at `.planning/phases/02-chat-backend-bff/02-VERIFICATION.md` status flipped to `passed`.
-
-**Phase 2 entry gates (added by Plan 05) — ALL CLOSED:**
-- ~~**Prod-mode Phase-0 smoke pending MGTI creds + CA bundle; gates Phase 2 `/api/chat` route build.**~~ CLOSED 2026-04-22 by Plan 02-01 Task 1.1: all four gating smokes (1, 2, 3, 5) PASS against MGTI. Evidence in `docs/phase-0-smoke.md` 'Phase 2 entry gate — PROD-MODE GREEN' section. Plan 04 Task 2 (`/api/chat` route code commit) is UNBLOCKED.
-- ~~**Expand .env handling docs before Phase 2 plan.**~~ CLOSED 2026-04-22 by Plan 02-01 Task 1.1 Step 1 — 182-line `docs/env-handling.md` covers runtime × env-file matrix, NODE_EXTRA_CA_CERTS shell-env requirement (nodejs/node #51426), App Service Application Settings mapping, troubleshooting, and .env.example aligned with EnvSchema.
-
-**Phase 5 forward-reference items (not blockers today; tracked so Phase 5 doesn't forget):**
-- `src/app/api/_middleware.ts` has a PHASE 5 REPLACEMENT POINT comment block identifying the exact substitution surface (read bearer → validate JWT vs Entra → enforce `env().ENTRA_TENANT_ID` allowlist → return jwt.oid/tid). Phase 5 Plan 05-01 ADDED `ENTRA_CLIENT_ID` + `ENTRA_TENANT_ID` to EnvSchema; Plan 05-03 wires the JWT validation.
-- `src/obs/logger.ts` has a PHASE 6 comment marking App Insights exporter layer as forward work on top of raw stdout JSON (STACK.md §8 OTel distro).
-
-**Phase 5 in-flight items (Plan 05-01 complete; downstream plans queued):**
-- Plan 05-02 (`/api/health` canary + `/access-denied` page + `token_expired` 9th error code) — parallel wave-2 plan; appears to have been started mid-execution (commit `cf3a068` present; three files still uncommitted in working tree: src/chat-ui/ErrorCard.tsx, src/chat-ui/__tests__/ErrorCard.test.tsx, src/chat-ui/types.ts). Plan 05-02 executor must fold the working-tree residue into its own commit flow.
-- Plan 05-03 (JWT validation middleware): jose@6.2.2 + mock-jwks@3.3.5 installed by Plan 05-01; ENTRA_CLIENT_ID + ENTRA_TENANT_ID available via `env()`; PHASE-5 REPLACEMENT POINT marker still in place at `src/app/api/_middleware.ts`. UNBLOCKED.
-- Plan 05-04 (AuthProvider + redirect bridge + signout): `@azure/msal-react@5.3.1` installed; `getMsalInstance()` singleton available at `src/auth/msalInstance.ts`; DEFAULT_SCOPES authoritative at `src/auth/msalConfig.ts`. UNBLOCKED but should wait on 05-03 (middleware must exist before AuthProvider wires against it).
-- Plan 05-05 (Teams manifest + CI/CD deploy): `.npmrc node-linker=hoisted` in place; Next.js standalone build will now include transitive deps correctly. UNBLOCKED but sequenced last.
-
-**Phase 5 concerns carried forward:**
-- MSAL v5's `navigateToLoginRequestUrl` equivalence depends on internal state-capture behaviour. Plan 05-04 E2E should assert that after a redirect sign-in the user lands back on their starting URL (not `/`). If broken, reinstate via `onRedirectNavigate` callback (still part of BrowserAuthOptions).
-- `getMsalInstance()` is async (`createNestablePublicClientApplication` returns a Promise). Plan 05-04 AuthProvider must `await` before passing the instance to `MsalProvider` — cannot import synchronously as `const pca = ...`.
-
-## Session Continuity
-
-Last session: 2026-04-23 — Plan 05-02 health-access-denied-token-expired complete. Commits: cf3a068 (feat /api/health + /access-denied + 11 new tests) / 75117a1 (feat token_expired 9th ErrorCode + Sign back in CTA + 5 new tests) + pending docs metadata commit. 548/548 unit tests green; 19 E2E specs green; `pnpm typecheck` clean. SUMMARY at .planning/phases/05-sso-and-teams-delivery/05-02-SUMMARY.md. Plan 05-01's residue note resolved — the working-tree ErrorCard/types.ts edits were my Task-2 work, now atomic-committed in 75117a1. Wave 1 of Phase 5 COMPLETE (Plans 01+02 shipped in parallel, zero file collisions, zero Phase 2/3/4 regressions).
-
-Prior session: 2026-04-23 — Plan 05-01 auth-foundation complete. Commits: 8bf2998 (chore deps+.npmrc+env) / ca833e6 (feat detectHost+msalConfig+msalInstance) + pending docs metadata commit.
-
-Stopped at: Phase 5 Wave 1 COMPLETE (Plans 01+02 of 5 done).
-Resume signals (next session):
-  - Plan 05-03 middleware-jwt-validation: UNBLOCKED (jose + ENTRA_* env ready from 05-01; client-side ErrorCode token_expired ready from 05-02 — 05-03 extends server-side sse.ts + wires /api/chat emit)
-  - Plan 05-04 auth-provider-redirect-bridge-signout: UNBLOCKED but sequence after 05-03; ChatSurface call-site re-wire for token_expired CTA lives here
-  - Plan 05-05 teams-manifest-cicd-deploy: UNBLOCKED (.npmrc ready, /api/health canary ready); sequence last
-Resume file: None
-
-**Deferred work tracked for v1.1 (post-Phase 2):**
-- Convert streamAnswer from `stream: false` to `stream: true` with per-chunk writer
-- Re-implement 20s inter-chunk idle timeout via chunk-resettable timer (see src/llm/stream.ts TODO marker + Plan 1-05 / Plan 2-01 baselines)
-- Distinct `InterChunkTimeoutError` class for provenance differentiation from total-timeout
+*Last activity: 2026-04-24 — v1 Pilot Release shipped + archived. Milestone v1 complete. Ready for `/gsd:new-milestone` to scope v1.1.*
