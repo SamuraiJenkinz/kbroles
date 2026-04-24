@@ -215,7 +215,17 @@ Full research at `.planning/phases/05.1-mmc-it-bff-pivot-xmcp-pattern/05.1-RESEA
 
 **Pitfall focus**: Pitfall 1 (negative eval is the primary grounding signal), Pitfall 3 (multi-turn + positional eval), Pitfall 8 (version-poller + named Content Steward), Pitfall 14 (pre-registered measurement plan before pilot — confounders can't be fixed retroactively), Pitfall 15 (real-query review during pilot expands eval coverage beyond the 13 chips)
 
-**Plans**: TBD (likely 4–5)
+**Plans**: 8 plans
+
+Plans:
+- [ ] 06-01-telemetry-foundation-PLAN.md — Install @azure/monitor-opentelemetry + instrumentation.ts bootstrap + trackEvent() wrapper with pino dual-emit
+- [ ] 06-02-question-hash-and-server-events-PLAN.md — hashQuestion + session/user hashes; wire server-side events from /api/chat pipeline
+- [ ] 06-03-client-events-and-feedback-endpoint-PLAN.md — POST /api/feedback + /api/telemetry + frontend 👍/👎/citation-click/flag-a-gap wiring
+- [ ] 06-04-eval-harness-and-fast-suites-PLAN.md — Runner types, threshold registry, JSON report writer, two deterministic fast suites
+- [ ] 06-05-slow-suites-and-llm-judge-PLAN.md — Judge best-of-3, flake quarantine, four LLM-judge suites (neg-oos, paired-role, injection-refuse, positional)
+- [ ] 06-06-ci-cd-integration-PLAN.md — ci.yml (PR fast-eval gate), evals-nightly.yml (slow evals + issue-open + Teams notify), deploy.yml eval gate + bypass
+- [ ] 06-07-workbook-and-alerts-PLAN.md — App Insights workbook ARM template (5 sections), Azure Monitor alerts via Bicep, Teams webhook validation runbook
+- [ ] 06-08-steward-pull-and-docs-PLAN.md — ServiceNow monthly pull script + steward-monthly + weekly-digest workflows + content-steward-runbook.md + measurement-plan.md
 
 ---
 
@@ -232,7 +242,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 5.1 → 6
 | 4. Source Panel, Trust & Fallback UI | 4/4 | Complete | 2026-04-23 |
 | 5. SSO & Teams Delivery | 4/5 | Paused (pivoted to 5.1) | 2026-04-23 |
 | 5.1 MMC-IT BFF pivot | 8/8 | Complete | 2026-04-23 |
-| 6. Telemetry, Evals & Pilot Hardening | 0/TBD | Not started | - |
+| 6. Telemetry, Evals & Pilot Hardening | 0/8 | Not started | - |
 
 ---
 
