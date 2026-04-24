@@ -1,0 +1,135 @@
+# Content Steward Monthly Pull
+#
+# Prerequisites (operator task, not automated):
+#   - AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY: repo secrets with read access to
+#     /mmc/cts/kb-assistant in AWS Secrets Manager (us-east-1)
+#   - STEWARD_GH_HANDLE: optional repo variable (Settings → Variables → Actions)
+#     set to the steward's GitHub username for auto-assign on the opened issue.
+#     If absent, the issue is created without assignees.
+#
+# The workflow uses node --loader tsx to run the TypeScript pull script directly.
+# It commits the resulting JSON archive back to main via the github-actions[bot]
+# identity so the archive is always present for the next monthly comparison.
+
+name: Content Steward Monthly Pull
+on:
+  schedule:
+    - cron: '0 1 1 * *'   # 01:00 UTC on the 1st of each month
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: 'Run with --baseline flag (pre-pilot snapshot, 90-day window)'
+        type: boolean
+        default: false
+
+jobs:
+  pull:
+    name: Pull rejected/outdated articles from ServiceNow
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip if scheduled on weekend
+        if: ${{ github.event_name == 'schedule' }}
+        run: |
+          DAY=$(date -u +%u)   # 1=Mon .. 7=Sun
+          if [ "$DAY" -ge 6 ]; then
+            echo "::notice::First of month is a weekend (day $DAY). Skipping auto-run."
+            echo "Operator: trigger via workflow_dispatch on the next business day."
+            exit 0
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run SN pull
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1
+          AWS_SECRET_NAME: /mmc/cts/kb-assistant
+        run: |
+          if [ "${{ inputs.baseline }}" = "true" ]; then
+            pnpm exec tsx scripts/pull-servicenow-feedback.ts --baseline
+          else
+            pnpm exec tsx scripts/pull-servicenow-feedback.ts
+          fi
+
+      - name: Open steward issue + commit archive
+        uses: actions/github-script@v7
+        env:
+          STEWARD_GH_HANDLE: ${{ vars.STEWARD_GH_HANDLE }}
+        with:
+          script: |
+            const fs = require('fs')
+            const path = require('path')
+
+            // Find the most recently written archive file
+            const archiveDir = 'ops/rejected-articles'
+            const files = fs.readdirSync(archiveDir)
+              .filter(f => f.endsWith('.json') && f !== 'README.md')
+            const latest = files.sort().pop()
+            if (!latest) {
+              core.setFailed('No archive file written — pull script may have failed')
+              return
+            }
+            const data = JSON.parse(
+              fs.readFileSync(path.join(archiveDir, latest), 'utf8')
+            )
+
+            // Build issue body with checklist of up to 50 records
+            const rows = data.records || []
+            const checklist = rows.slice(0, 50).map(r =>
+              `- [ ] **${r.number}** — ${r.short_description} ` +
+              `— state: ${r.workflow_state} ` +
+              `— feedback: ${r.feedback_count ?? 0} ` +
+              `— reason: ${r.rejection_reason ?? '(none)'}`
+            )
+            const overflow = rows.length > 50
+              ? `_(+${rows.length - 50} more in ${archiveDir}/${latest})_`
+              : ''
+            const body = [
+              `Monthly steward review for window **${data.window}** — ${data.count} records.`,
+              '',
+              '## Checklist — decide which articles warrant new eval fixtures',
+              ...checklist,
+              '',
+              overflow,
+              '',
+              '## Decision framework',
+              '- **Signal**: real gap → open a PR adding entries to `src/evals/fixtures/real-query-coverage.json` or `src/evals/fixtures/negative-oos.json`',
+              '- **Noise**: procedural rejection, already re-published → mark checkbox with "NOISE: <reason>"',
+              '- **Needs investigation**: insufficient context → open a Teams thread in #kb-assistant-pilot',
+              '',
+              'Runbook: `docs/content-steward-runbook.md`',
+            ].join('\n')
+
+            // Determine assignees — STEWARD_GH_HANDLE repo variable (optional)
+            const handle = process.env.STEWARD_GH_HANDLE
+            const assignees = handle ? [handle] : []
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Content Steward review: ${data.window} rejected articles (${data.count} items)`,
+              body,
+              labels: ['content-steward'],
+              assignees,
+            })
+            core.info(`Issue created for window ${data.window}`)
+
+      - name: Commit archive back to main
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add ops/rejected-articles/
+          git commit -m "chore(steward): monthly SN pull $(date -u +%Y-%m)" || echo "nothing to commit"
+          git push

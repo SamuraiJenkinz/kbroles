@@ -1,0 +1,66 @@
+# Weekly Pilot Digest
+#
+# Prerequisites (operator task, not automated):
+#   - AZURE_CREDENTIALS: repo secret — SP JSON blob created via:
+#     az ad sp create-for-rbac --name "kb-assistant-digest" \
+#       --role "Monitoring Reader" \
+#       --scopes /subscriptions/<sub-id>/resourceGroups/<rg> \
+#       --sdk-auth
+#   - APP_INSIGHTS_APP_ID: repo secret — the App Insights application ID
+#     (visible in portal → App Insights → Overview → Application ID)
+#   - TEAMS_WEBHOOK_URL: repo secret — the Teams incoming webhook URL
+#     (from the Teams channel connector settings)
+#
+# Schedule: Sunday 23:00 UTC = Monday 09:00 AEST (UTC+10, AEST has no DST)
+# This gives the steward a digest at the start of the work week.
+
+name: Weekly Pilot Digest
+on:
+  schedule:
+    - cron: '0 23 * * 0'   # Sunday 23:00 UTC = Monday 09:00 AEST
+  workflow_dispatch: {}
+
+jobs:
+  digest:
+    name: Post weekly digest to Teams
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Query App Insights for weekly summary
+        id: q
+        run: |
+          SUMMARY=$(az monitor app-insights query \
+            --app "${{ secrets.APP_INSIGHTS_APP_ID }}" \
+            --analytics-query "
+              customEvents
+              | where timestamp > ago(7d)
+              | summarize
+                  sessions = dcount(tostring(customDimensions['session_id_hash'])),
+                  users = dcount(tostring(customDimensions['user_id_hash'])),
+                  thumbs_down = countif(name == 'thumbs_rating' and customDimensions['rating'] == 'down'),
+                  fallback = countif(name == 'fallback_trigger'),
+                  total_requests = countif(name == 'chat_request_completed')
+            " --query 'tables[0].rows[0]' -o json)
+          echo "summary<<EOF" >> $GITHUB_OUTPUT
+          echo "$SUMMARY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post to Teams
+        env:
+          TEAMS: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          SUMMARY: ${{ steps.q.outputs.summary }}
+        run: |
+          # Read SUMMARY from the env var (not an inline ${{ }} expression) to
+          # avoid shell injection on quotes/newlines in the KQL JSON output.
+          # jq --arg reads the env var value safely as a string argument.
+          PAYLOAD=$(jq -n --arg s "$SUMMARY" \
+            '{text: ("**Weekly KB Assistant Digest**\n```json\n" + $s + "\n```\nWorkbook: https://portal.azure.com/#@tenant/.../workbook")}')
+          # Non-blocking: a curl failure does not fail the workflow — digest
+          # is informational. If Teams is down the data is in App Insights.
+          curl -sS -X POST \
+            -H 'Content-Type: application/json' \
+            -d "$PAYLOAD" \
+            "$TEAMS" || echo "::warning::Teams webhook post failed — digest data available in App Insights"
