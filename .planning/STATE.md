@@ -52,7 +52,9 @@ See: .planning/ROADMAP.md (6 phases, standard depth)
 ## Current Position
 
 Phase: 6 of 6 (Telemetry, Evals & Pilot Hardening) — In progress
-Plan: 3 of 8 (client-events-and-feedback-endpoint) — COMPLETE 2026-04-24
+Plan: 7 of 8 (workbook-and-alerts) — COMPLETE 2026-04-24
+
+**Phase 6 Plan 07 summary:** ARM workbook template (5 KQL sections, deterministic GUID a1b2c3d4-e5f6-7890-abcd-ef1234567890) + Bicep action group (kb-assistant-alerts, useCommonAlertSchema:true) + 4 scheduledQueryRules (P1 kb-p1-chat-5xx 5xx>5%/10m, P2 kb-p2-fallback-rate 25%/1h, P2 kb-p2-thumbs-down-rate 15%/24h, P2 kb-p2-validator-flip-rate 5%/24h) + idempotent provision.sh (bash strict mode, aws secretsmanager fetch, two az deployment group create calls) + Teams webhook validation runbook (curl test, Logic App buffer fallback, {{STEWARD_BACKUP_NAME}} placeholder). Section 5 eval trend KQL is complete but inert on pilot day 1 (eval_run_completed emission follow-up required). Decisions: P1 as scheduledQueryRule for percentage SLO consistency; Teams Logic App documented not pre-built; Section 5 kept inert per plan instruction; webhook URL fetched at runtime from AWS Secrets Manager. Cross-plan note: concurrent 06-08 agent files (scripts/, ops/rejected-articles/) committed under be9d974 due to staging overlap — content correct. Test baseline 728/728 unit (716 + 12 concurrent 06-08 additions). Live Azure validation is operator task post-merge.
 
 **Phase 6 Plan 03 summary:** POST /api/feedback + POST /api/telemetry BFF endpoints with iron-session auth guard, Zod validation, and trackEvent() emission; `sendFeedback()` + `sendClientEvent()` browser helpers (sendBeacon + fetch keepalive fallback, fire-and-forget); `/api/chat` emits `message_id` UUID as first SSE frame for client-server correlation; chatReducer captures message_id before answer_delta; AssistantControls calls sendFeedback on thumbs-up/down+reason; ChatSurface calls sendClientEvent('citation_click_through') on chip click; FallbackCard calls sendClientEvent('flag_a_gap_action') on flag-a-gap click; 3 Playwright E2E specs covering SC#4 + FDBK-03 (thumbs-down payload shape, citation chip telemetry, fallback gap flag). Test baseline 716/716 unit + 22/22 E2E (2 skipped remote-smoke). Decisions: SSE Option B (server-generated UUID), sendBeacon+fetch fallback, page.route() interception for E2E (iron-session requires real cookie), closed-enum telemetry event names, PII_KEYS server-side stripping, wrong_citation → 'wrong citation' mapping at call site. Rule-1 auto-fixes: (1) Message.test.tsx onChipClick arity; (2) AssistantControls reason mapping mismatch; (3) route.test.ts frame ordering after message_id SSE addition; (4) keyboard-and-error-retry.spec.ts strict-mode violation with .first().
 
@@ -79,7 +81,9 @@ Status (Phase 5, historical, paused): Plan 05-04 landed the client-side auth run
 
 **Plan 05-01 (prior)** — Plan 05-01 COMPLETE. Deps (@azure/msal-browser@5.8.0, @azure/msal-react@5.3.1, @microsoft/teams-js@2.52.0, jose@6.2.2, mock-jwks@3.3.5). `.npmrc node-linker=hoisted`. EnvSchema +ENTRA_*. `src/auth/{detectHost,msalConfig,msalInstance}.ts` shipped.
 
-Last activity: 2026-04-24 — Phase 6 Plan 03 (client-events-and-feedback-endpoint) COMPLETE. Commits: 264944a (feat: BFF endpoints) / 325834e (feat: telemetryClient + UI wiring + message_id SSE echo) / b48f12e (test: playwright e2e feedback round-trip) + this metadata commit. Test baseline 716/716 unit + 22/22 E2E. Decisions: SSE Option B (server UUID), sendBeacon+fetch fallback, page.route() E2E interception, closed-enum telemetry names, PII_KEYS stripping.
+Last activity: 2026-04-24 — Phase 6 Plan 07 (workbook-and-alerts) COMPLETE. Commits: 418e264 (feat: workbook ARM template + 5 sections) / be9d974 (feat: bicep alerts + provision.sh + teams-webhook runbook) + this metadata commit. Test baseline 728/728 unit. Decisions: P1 as scheduledQueryRule, Logic App fallback documented not pre-built, Section 5 inert pending follow-up.
+
+Previous: 2026-04-24 — Phase 6 Plan 03 (client-events-and-feedback-endpoint) COMPLETE. Commits: 264944a (feat: BFF endpoints) / 325834e (feat: telemetryClient + UI wiring + message_id SSE echo) / b48f12e (test: playwright e2e feedback round-trip) + this metadata commit. Test baseline 716/716 unit + 22/22 E2E. Decisions: SSE Option B (server UUID), sendBeacon+fetch fallback, page.route() E2E interception, closed-enum telemetry names, PII_KEYS stripping.
 
 Previous: 2026-04-24 — Phase 6 Plan 06 (ci-cd-integration) COMPLETE. Commits: f00853f (feat: ci.yml + evals-nightly.yml) / 264944a (feat: deploy.yml + eval-gate-bypass-procedure.md via concurrent wave staging) + this metadata commit. Test baseline 700/700 unit + 19/19 E2E. Decisions: MessageCard plain-text Teams notify, 48h nightly window, 2-consecutive-red hard block, fast evals HARD gate.
 
@@ -93,9 +97,9 @@ Previous: 2026-04-24 — Phase 6 Plan 01 (telemetry-foundation) COMPLETE. Commit
 
 Previous: 2026-04-24 — Phase 5.1 (MMC-IT BFF pivot) COMPLETE + verifier passed + user-approved (human-deploy items tracked as pending-operator-execution). 8 plans × 5 waves × 27 plan/metadata commits + 1 orchestrator lockfile correction (018ba84). Final heads: Wave 1 — d27e249 / e52edb6 / 6ee4f03 / e54dcb6 / a96f804 / f0df9ff; Wave 2 — de258b8 / f8b70c1 / c39091d / b1c071d / adea02a / 9df2387; Wave 3 — 7dabefb / 9346350 / e5aa645; Wave 4 — 561f246 / c357d02 / cad7dbf / 5dc6cfe / 2e09cfc / d0facb4 / 86fcbb5 / 018ba84; Wave 5 — 4d7de2a / 651a8d7 / c7dff73 / 42ecdc0. Phase verification: 05.1-VERIFICATION.md.
 
-Progress: [████████████████████████████████████████░] Phase 6 in progress (Plans 1+2+3+4+5+6 of 8 complete, Plans 7+8 pending); Phases 1–5.1 of 6 complete
+Progress: [█████████████████████████████████████████░] Phase 6 in progress (Plans 1+2+3+4+5+6+7 of 8 complete, Plan 8 pending); Phases 1–5.1 of 6 complete
 
-Note: Plans 03 and 06 both show COMPLETE for 2026-04-24. Plan 03 was executed concurrently with Plan 06 by separate agents; both are now committed and documented.
+Note: Plans 03 and 06 both show COMPLETE for 2026-04-24. Plan 03 was executed concurrently with Plan 06 by separate agents; both are now committed and documented. Plan 07 ran concurrently with Plan 08; 06-08 agent files committed under 06-07 commit be9d974 due to staging overlap (content correct).
 
 ## Performance Metrics
 

@@ -7,7 +7,6 @@ depends_on:
   - 06-01-telemetry-foundation-PLAN.md
   - 06-02-question-hash-and-server-events-PLAN.md
   - 06-03-client-events-and-feedback-endpoint-PLAN.md
-  - 06-06-ci-cd-integration-PLAN.md
 files_modified:
   - ops/workbooks/kb-assistant-pilot.workbook.json
   - ops/workbooks/README.md
@@ -23,6 +22,7 @@ blocks_execution_on:
   - "Teams webhook URL provisioned and stored in AWS Secrets Manager at /mmc/cts/kb-assistant/teams-webhook-url"
   - "Teams webhook payload format validated pre-pilot — if Teams rejects Common Alert Schema JSON, a 1-2h Logic App buffer task is flagged in docs/ops/teams-webhook-validation-procedure.md (RESEARCH.md §Pitfall 7)"
   - "Plans 06-01/02/03 merged so customEvents actually exist for the workbook to query"
+  - "Workbook Section 5 (Eval trend) is KQL-complete but inert on pilot day 1: no plan emits eval_run_completed events. Follow-up task required — either add scripts/emit-eval-events.ts invoked from evals-nightly.yml, or drop Section 5 from the default tab. ops/workbooks/README.md must document this clearly; workbook-deploy-procedure.md validation checklist must flag that Section 5 will show 'No data' until follow-up lands."
 
 must_haves:
   truths:
@@ -82,7 +82,6 @@ Output: `ops/workbooks/kb-assistant-pilot.workbook.json` (ARM template) + `ops/b
 @.planning/phases/06-telemetry-evals-and-pilot-hardening/06-01-telemetry-foundation-PLAN.md
 @.planning/phases/06-telemetry-evals-and-pilot-hardening/06-02-question-hash-and-server-events-PLAN.md
 @.planning/phases/06-telemetry-evals-and-pilot-hardening/06-03-client-events-and-feedback-endpoint-PLAN.md
-@.planning/phases/06-telemetry-evals-and-pilot-hardening/06-06-ci-cd-integration-PLAN.md
 </context>
 
 <tasks>
