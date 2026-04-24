@@ -1,0 +1,54 @@
+{
+  "schemaId": "azureMonitorCommonAlertSchema",
+  "data": {
+    "essentials": {
+      "alertId": "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.AlertsManagement/alerts/test-alert-id",
+      "alertRule": "kb-p1-chat-5xx",
+      "severity": "Sev1",
+      "signalType": "Log",
+      "monitorCondition": "Fired",
+      "monitoringService": "Log Analytics",
+      "alertTargetIDs": [
+        "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/kb-pilot-rg/providers/microsoft.insights/components/kb-assistant-ai"
+      ],
+      "configurationItems": [
+        "kb-assistant-ai"
+      ],
+      "originAlertId": "test-origin-id",
+      "firedDateTime": "2026-04-24T14:00:00.000Z",
+      "resolvedDateTime": null,
+      "description": "Test payload for validating Teams incoming webhook compatibility with Common Alert Schema.",
+      "essentialsVersion": "1.0",
+      "alertContextVersion": "1.0"
+    },
+    "alertContext": {
+      "properties": null,
+      "conditionType": "LogQueryCriteria",
+      "condition": {
+        "windowSize": "PT10M",
+        "allOf": [
+          {
+            "searchQuery": "requests | where timestamp > ago(10m) and url endswith \"/api/chat\" | summarize count_total = count(), count_5xx = countif(resultCode startswith \"5\") | extend error_rate_pct = 100.0 * count_5xx / iif(count_total == 0, 1, count_total) | where error_rate_pct > 5",
+            "metricMeasureColumn": null,
+            "targetResourceTypes": "microsoft.insights/components",
+            "operator": "GreaterThan",
+            "threshold": "0",
+            "timeAggregation": "Count",
+            "dimensions": [],
+            "metricValue": 1,
+            "failingPeriods": {
+              "numberOfEvaluationPeriods": 1,
+              "minFailingPeriodsToAlert": 1
+            },
+            "linkToSearchResultsUI": "https://portal.azure.com",
+            "linkToFilteredSearchResultsUI": "https://portal.azure.com",
+            "linkToSearchResultsAPI": "https://api.loganalytics.io",
+            "linkToFilteredSearchResultsAPI": "https://api.loganalytics.io"
+          }
+        ],
+        "windowStartTime": "2026-04-24T13:50:00.000Z",
+        "windowEndTime": "2026-04-24T14:00:00.000Z"
+      }
+    }
+  }
+}

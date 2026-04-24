@@ -33,6 +33,9 @@ const SECRET_KEYS = [
   'LLM_BASE_URL',
   'APPLICATIONINSIGHTS_CONNECTION_STRING',
   'QUESTION_HASH_SALT',
+  'SERVICENOW_SERVICE_ACCOUNT',
+  'SN_INSTANCE',
+  'TEAMS_WEBHOOK_URL',
 ] as const
 
 let _cache: Record<string, string> | null = null
