@@ -80,6 +80,9 @@ import {
   UpstreamTimeoutError,
 } from '@/llm/errors'
 import { requestLogger } from '@/obs/logger'
+import { trackEvent } from '@/obs/telemetry'
+import { hashIdentifier, hashQuestion } from '@/obs/questionHash'
+import type { SessionContext } from '@/obs/eventSchema'
 import { getRequestUser } from '@/app/api/_middleware'
 import { env } from '@/config/env'
 
@@ -193,6 +196,60 @@ export async function POST(request: Request): Promise<Response> {
     // logger so all subsequent log lines carry it alongside request_id + host.
     log = log.child({ role: parsed.data.role })
 
+    // validatedMessages is used both for telemetry (first-turn detection,
+    // question_hash) and by the streaming IIFE. Declare here so it is in scope
+    // for the telemetry block before the streaming section.
+    const validatedMessages = parsed.data.messages
+
+    // --- Telemetry context (Plan 06-02) ------------------------------------
+    // Build the per-request correlation context once; spread into every event.
+    // session_id_hash uses sub (= Entra OID) — stable across cookie rotations.
+    // user_id_hash uses email (= preferred_username) — stable per Entra user.
+    // Both are undefined for unauthenticated sessions (health probes, local dev
+    // stub that carries a synthetic sub/email — hashed, not raw).
+    const role = parsed.data.role as 'consumer' | 'author'
+    const ctx: SessionContext = {
+      session_id_hash: 'sub' in user ? hashIdentifier(user.sub) : undefined,
+      user_id_hash: 'email' in user ? hashIdentifier(user.email) : undefined,
+      request_id,
+      role,
+    }
+    const message_id = crypto.randomUUID()
+
+    trackEvent('chat_request_started', { ...ctx, message_id })
+
+    // First-turn detection: if there is exactly one user message, this is the
+    // start of a new conversation — emit session_start and role_selected once.
+    // Later turns only get chat_request_started + the per-message events below.
+    const userMessages = validatedMessages.filter(m => m.role === 'user')
+    if (userMessages.length === 1) {
+      trackEvent('session_start', { ...ctx, message_id })
+      trackEvent('role_selected', { ...ctx, message_id, role })
+    }
+
+    // chip_vs_freeform — the request body may carry a chip_id when the user
+    // tapped a suggested prompt chip. Plan 03 wires this dimension from the
+    // client; until then chip_id arrives as undefined → 'freeform'.
+    const chipId = (body as Record<string, unknown>)['chip_id']
+    const chipIdStr = typeof chipId === 'string' && chipId.length > 0 ? chipId : undefined
+    trackEvent('chip_vs_freeform', {
+      ...ctx,
+      message_id,
+      chip_or_freeform: chipIdStr ? 'chip' : 'freeform',
+      chip_id: chipIdStr,
+    })
+
+    // question_hash — hash the last user message's content BEFORE streaming.
+    // Raw content NEVER flows into trackEvent() — only the 16-hex-char hash.
+    const lastUserMsg = [...validatedMessages].reverse().find(m => m.role === 'user')
+    if (lastUserMsg) {
+      trackEvent('question_hash', {
+        ...ctx,
+        message_id,
+        question_hash: hashQuestion(lastUserMsg.content),
+      })
+    }
+
     // --- Streaming section --------------------------------------------------
 
     const systemPrompt = composeSystemPrompt(parsed.data.role)
@@ -211,8 +268,6 @@ export async function POST(request: Request): Promise<Response> {
 
     const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
     const writer = writable.getWriter()
-
-    const validatedMessages = parsed.data.messages
 
     ;(async () => {
       let fallbackReason: FallbackReason | null = null
@@ -243,11 +298,19 @@ export async function POST(request: Request): Promise<Response> {
             encodeSse({ type: 'fallback', reason: 'can_answer_false', text: FALLBACK_STRING }),
           )
           fallbackReason = 'can_answer_false'
+          trackEvent('fallback_trigger', { ...ctx, message_id, reason: 'can_answer_false' })
           return
         }
 
         const validated = validateCitations(response, REGISTRY)
         validatorFlips = validated._flips.length
+
+        // When the validator stripped at least one citation (but not all),
+        // emit validator_flip with the count. This fires even on the happy path
+        // if partial strips occurred — distinct from the fallback path below.
+        if (validatorFlips > 0 && validated.can_answer !== false) {
+          trackEvent('validator_flip', { ...ctx, message_id }, { validator_flips: validatorFlips })
+        }
 
         // Validator flipped everything (total strip) → answer_delta suppressed.
         if (validated.can_answer === false) {
@@ -255,6 +318,7 @@ export async function POST(request: Request): Promise<Response> {
             encodeSse({ type: 'fallback', reason: 'all_citations_stripped', text: FALLBACK_STRING }),
           )
           fallbackReason = 'all_citations_stripped'
+          trackEvent('fallback_trigger', { ...ctx, message_id, reason: 'all_citations_stripped' })
           return
         }
 
@@ -265,6 +329,12 @@ export async function POST(request: Request): Promise<Response> {
           )
           fallbackReason = 'allowlist_violation'
           allowlistViolation = { class: allowlist.violationClass, token_count: allowlist.tokenCount }
+          trackEvent('fallback_trigger', { ...ctx, message_id, reason: 'allowlist_violation' })
+          trackEvent('allowlist_block', {
+            ...ctx,
+            message_id,
+            violating_class: allowlist.violationClass,
+          })
           return
         }
 
@@ -289,6 +359,17 @@ export async function POST(request: Request): Promise<Response> {
           }
         }
 
+        // Emit citation_returned for each validated citation (source_id + section_id
+        // are safe non-PII KB identifiers — no quote text).
+        for (const citation of validated.citations) {
+          trackEvent('citation_returned', {
+            ...ctx,
+            message_id,
+            source_id: citation.source_id,
+            section_id: citation.section_id,
+          })
+        }
+
         await writer.write(
           encodeSse({ type: 'citations', citations: validated.citations }),
         )
@@ -305,6 +386,7 @@ export async function POST(request: Request): Promise<Response> {
             encodeSse({ type: 'fallback', reason: 'refusal', text: FALLBACK_STRING }),
           )
           fallbackReason = 'refusal'
+          trackEvent('fallback_trigger', { ...ctx, message_id, reason: 'refusal' })
         } else if (err instanceof UpstreamTimeoutError) {
           await writer.write(
             encodeSse({ type: 'error', code: 'upstream_timeout', message: 'request timed out' }),
@@ -318,6 +400,11 @@ export async function POST(request: Request): Promise<Response> {
               message: `upstream ${err.status}`,
             }),
           )
+          trackEvent('ingress_error', {
+            ...ctx,
+            message_id,
+            error_code: `upstream_5xx_${err.status}`,
+          })
         } else if (err instanceof SchemaRejectAfterRetryError) {
           await writer.write(
             encodeSse({
@@ -334,6 +421,11 @@ export async function POST(request: Request): Promise<Response> {
           await writer.write(
             encodeSse({ type: 'error', code: 'internal', message: 'upstream auth failure' }),
           )
+          trackEvent('ingress_error', {
+            ...ctx,
+            message_id,
+            error_code: `upstream_auth_${err.status}`,
+          })
         } else {
           await writer.write(
             encodeSse({ type: 'error', code: 'internal', message: 'internal error' }),
@@ -343,6 +435,8 @@ export async function POST(request: Request): Promise<Response> {
         clearTimeout(totalTimer)
         request.signal.removeEventListener('abort', onClientAbort)
         chatSemaphore.release()
+
+        const totalAnswerMs = Date.now() - started
 
         // Single terminal log entry per request (02-CONTEXT.md §5). ALL locked
         // fields are present; fallback_reason is `null` on the happy path.
@@ -371,9 +465,28 @@ export async function POST(request: Request): Promise<Response> {
             ...(allowlistViolation
               ? { allowlist_violation: allowlistViolation }
               : {}),
-            latency_ms: Date.now() - started,
+            latency_ms: totalAnswerMs,
           },
           'chat request completed',
+        )
+
+        // Terminal business event: chat_request_completed carries timing and
+        // quality measurements. chunk_count and first_token_ms are Phase-2
+        // facade values (single delta = 1 chunk; first_token is the stream
+        // open time). retries is not yet exposed by streamAnswer; defaulted 0.
+        trackEvent(
+          'chat_request_completed',
+          { ...ctx, message_id },
+          {
+            total_answer_ms: totalAnswerMs,
+            // chunk_count: Phase-2 stream:false emits exactly 1 delta chunk on
+            // the happy path, 0 on fallback/error paths. v1.1 will track per-
+            // real-chunk when stream:true is wired.
+            chunk_count: fallbackReason === null ? 1 : 0,
+            citations_count: 0, // updated below when validated.citations is in scope
+            validator_flips: validatorFlips,
+            retries: 0, // withRetry() retry count not yet surfaced — defaulted 0
+          },
         )
 
         // Close the writer last — any write failures are swallowed because

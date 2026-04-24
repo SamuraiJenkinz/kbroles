@@ -1,0 +1,222 @@
+[
+  {
+    "id": "paired-001-consumer",
+    "suite": "paired-role",
+    "role": "consumer",
+    "input": "What should I do if I think an article is incorrect?",
+    "expected_behavior": "consumer-answer",
+    "notes": "pair_id:paired-001. Consumer: general guidance on flagging. Author: specific field/workflow to use for resolving/retracting.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "paired-001-author",
+    "suite": "paired-role",
+    "role": "author",
+    "input": "What should I do if I think an article is incorrect?",
+    "expected_behavior": "author-answer",
+    "notes": "pair_id:paired-001. Author answer must contain author-specific guidance: resolution-field, article retraction, or approver workflow details that the consumer answer does not.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "paired-002-consumer",
+    "suite": "paired-role",
+    "role": "consumer",
+    "input": "How do I submit a request to update knowledge base content?",
+    "expected_behavior": "consumer-answer",
+    "notes": "pair_id:paired-002. Consumer: raise a request. Author: direct update workflow, approval routing.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "paired-002-author",
+    "suite": "paired-role",
+    "role": "author",
+    "input": "How do I submit a request to update knowledge base content?",
+    "expected_behavior": "author-answer",
+    "notes": "pair_id:paired-002. Author answer must contain author-specific details: direct edit rights, approver review, or publishing steps.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "paired-003-consumer",
+    "suite": "paired-role",
+    "role": "consumer",
+    "input": "What is the process for retiring an outdated article?",
+    "expected_behavior": "consumer-answer",
+    "notes": "pair_id:paired-003. Consumer: raise concern or submit feedback. Author: retirement workflow, approval chain.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "paired-003-author",
+    "suite": "paired-role",
+    "role": "author",
+    "input": "What is the process for retiring an outdated article?",
+    "expected_behavior": "author-answer",
+    "notes": "pair_id:paired-003. Author answer must mention: retirement status field, approver sign-off, or workflow state change — none of which appear in the consumer answer.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "paired-004-consumer",
+    "suite": "paired-role",
+    "role": "consumer",
+    "input": "Who approves changes to knowledge base articles?",
+    "expected_behavior": "consumer-answer",
+    "notes": "pair_id:paired-004. Consumer: general awareness of approval chain. Author: specific approver roles, routing rules.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "paired-004-author",
+    "suite": "paired-role",
+    "role": "author",
+    "input": "Who approves changes to knowledge base articles?",
+    "expected_behavior": "author-answer",
+    "notes": "pair_id:paired-004. Author answer must name specific approver roles or approval workflow nodes that the consumer answer omits.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "paired-005-consumer",
+    "suite": "paired-role",
+    "role": "consumer",
+    "input": "How do I know if an article has been reviewed recently?",
+    "expected_behavior": "consumer-answer",
+    "notes": "pair_id:paired-005. Consumer: check last-updated date. Author: review workflow fields, scheduled review cadence.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "paired-005-author",
+    "suite": "paired-role",
+    "role": "author",
+    "input": "How do I know if an article has been reviewed recently?",
+    "expected_behavior": "author-answer",
+    "notes": "pair_id:paired-005. Author answer must reference review-cycle fields or scheduled-review workflow items not present in consumer answer.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "paired-006-consumer",
+    "suite": "paired-role",
+    "role": "consumer",
+    "input": "Can I add new sections to an existing article?",
+    "expected_behavior": "consumer-answer",
+    "notes": "pair_id:paired-006. Consumer: no, submit request. Author: yes, direct edit with approval.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "paired-006-author",
+    "suite": "paired-role",
+    "role": "author",
+    "input": "Can I add new sections to an existing article?",
+    "expected_behavior": "author-answer",
+    "notes": "pair_id:paired-006. Author answer must describe direct edit rights and section-addition workflow that the consumer answer does not include.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "paired-007-consumer",
+    "suite": "paired-role",
+    "role": "consumer",
+    "input": "What happens after I flag an article as inaccurate?",
+    "expected_behavior": "consumer-answer",
+    "notes": "pair_id:paired-007. Consumer: ticket raised, someone reviews. Author: assigned to article owner, review workflow triggered.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "paired-007-author",
+    "suite": "paired-role",
+    "role": "author",
+    "input": "What happens after I flag an article as inaccurate?",
+    "expected_behavior": "author-answer",
+    "notes": "pair_id:paired-007. Author answer must describe the authoring-side workflow (assignment, resolution field update) not present in consumer answer.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "paired-008-consumer",
+    "suite": "paired-role",
+    "role": "consumer",
+    "input": "How do I search for a specific knowledge base article?",
+    "expected_behavior": "consumer-answer",
+    "notes": "pair_id:paired-008. Consumer: use search bar. Author: also can browse by category, authoring dashboard.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "paired-008-author",
+    "suite": "paired-role",
+    "role": "author",
+    "input": "How do I search for a specific knowledge base article?",
+    "expected_behavior": "author-answer",
+    "notes": "pair_id:paired-008. Author answer should reference authoring-dashboard view or category-browse capabilities beyond the consumer search bar.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "paired-009-consumer",
+    "suite": "paired-role",
+    "role": "consumer",
+    "input": "What should I include when reporting a missing knowledge base article?",
+    "expected_behavior": "consumer-answer",
+    "notes": "pair_id:paired-009. Consumer: describe topic, submit request. Author: create article draft, assign category.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "paired-009-author",
+    "suite": "paired-role",
+    "role": "author",
+    "input": "What should I include when reporting a missing knowledge base article?",
+    "expected_behavior": "author-answer",
+    "notes": "pair_id:paired-009. Author answer must describe the article-creation process or draft submission workflow not in the consumer answer.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "paired-010-consumer",
+    "suite": "paired-role",
+    "role": "consumer",
+    "input": "How are knowledge base articles organised by category?",
+    "expected_behavior": "consumer-answer",
+    "notes": "pair_id:paired-010. Consumer: browse by category. Author: can also manage category assignments, create sub-categories.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "paired-010-author",
+    "suite": "paired-role",
+    "role": "author",
+    "input": "How are knowledge base articles organised by category?",
+    "expected_behavior": "author-answer",
+    "notes": "pair_id:paired-010. Author answer must include category management or assignment workflow details the consumer answer omits.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  }
+]

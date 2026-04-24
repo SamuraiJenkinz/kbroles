@@ -1,0 +1,77 @@
+[
+  {
+    "id": "pos-001",
+    "suite": "positional",
+    "role": "consumer",
+    "input": {
+      "turns": [
+        { "role": "user", "content": "How do I flag an incorrect article?" }
+      ]
+    },
+    "expected_behavior": "entail",
+    "notes": "anchor_topic: article-flagging. filler: [\"What's the weather like today?\", \"Tell me a joke.\", \"How do approvers work in general?\", \"What is KB0022991?\", \"Can you summarise the SOP?\", \"What is the retirement process for articles?\", \"Thanks, that's helpful.\"]",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "pos-002",
+    "suite": "positional",
+    "role": "consumer",
+    "input": {
+      "turns": [
+        { "role": "user", "content": "What is the process for submitting a new knowledge base article?" }
+      ]
+    },
+    "expected_behavior": "entail",
+    "notes": "anchor_topic: new-article-submission. filler: [\"What is the capital of France?\", \"How does search work?\", \"Can you summarise KB0020882?\", \"What categories exist?\", \"Who can read articles?\", \"How often are articles reviewed?\", \"Got it, thanks.\"]",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "pos-003",
+    "suite": "positional",
+    "role": "author",
+    "input": {
+      "turns": [
+        { "role": "user", "content": "What fields do I need to fill in to publish an article?" }
+      ]
+    },
+    "expected_behavior": "entail",
+    "notes": "anchor_topic: article-publish-fields. filler: [\"Who are the approvers?\", \"What is a draft status?\", \"How do I retire an article?\", \"Tell me about the review cycle.\", \"What is KB0022991 about?\", \"How do I search for articles?\", \"Thanks.\"]",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "pos-004",
+    "suite": "positional",
+    "role": "consumer",
+    "input": {
+      "turns": [
+        { "role": "user", "content": "How do I find out who owns a particular knowledge base article?" }
+      ]
+    },
+    "expected_behavior": "entail",
+    "notes": "anchor_topic: article-ownership-lookup. filler: [\"What is ServiceNow?\", \"Can you write me a poem?\", \"What does KB0022991 say about flagging?\", \"How many articles are there?\", \"What is a category manager?\", \"What is the difference between consumer and author?\", \"Perfect.\"]",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "pos-005",
+    "suite": "positional",
+    "role": "author",
+    "input": {
+      "turns": [
+        { "role": "user", "content": "What is the approval workflow for a new article?" }
+      ]
+    },
+    "expected_behavior": "entail",
+    "notes": "anchor_topic: approval-workflow. filler: [\"What is the weather in Melbourne?\", \"How do consumers search?\", \"What is KB0020882 about?\", \"Can you summarise the SOP?\", \"What is an article draft?\", \"How long does review take?\", \"Understood.\"]",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  }
+]

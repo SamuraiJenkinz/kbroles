@@ -44,11 +44,15 @@ const mocks = vi.hoisted(() => {
   // by src/app/api/__tests__/_middleware.test.ts (Plan 05.1-04 Task 1).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const authOverride: { value: any } = { value: null }
+  // Plan 06-02: trackEvent spy. Captures all (name, dims, meas) call arguments
+  // for event-ordering and PII-absence assertions.
+  const trackEventSpy = vi.fn()
   return {
     capturedLines: lines as string[],
     logger,
     streamAnswerMock,
     authOverride,
+    trackEventSpy,
   }
 })
 
@@ -66,6 +70,15 @@ vi.mock('@/llm/client', () => ({
 vi.mock('@/obs/logger', () => ({
   logger: mocks.logger,
   requestLogger: (fields: Record<string, unknown>) => mocks.logger.child(fields),
+}))
+
+// Plan 06-02: mock telemetry so trackEvent() calls are captured by the spy
+// without requiring a live OTel exporter. The mock also prevents the pino
+// dual-emit inside trackEvent() from adding lines to capturedLines (the
+// existing tests that check capturedLines already account for what the REAL
+// logger emits via the requestLogger mock above).
+vi.mock('@/obs/telemetry', () => ({
+  trackEvent: mocks.trackEventSpy,
 }))
 
 // Plan 05.1-04: fully replace the _middleware module with a hermetic mock.
@@ -116,6 +129,8 @@ import { FALLBACK_STRING } from '@/grounding/fallback'
 
 const mockStreamAnswer = mocks.streamAnswerMock
 const capturedLines = mocks.capturedLines
+// Plan 06-02: trackEvent spy for event-ordering and PII-absence assertions.
+const trackEventSpy = mocks.trackEventSpy
 
 type SseFrame =
   | { type: 'answer_delta'; text: string }
@@ -188,6 +203,8 @@ beforeEach(() => {
   resetSemaphore(20)
   clearCapturedLogs()
   mockStreamAnswer.mockReset()
+  // Plan 06-02: reset trackEvent spy each test.
+  trackEventSpy.mockReset()
   // Plan 05-03: reset the auth override each test so accidental leakage
   // between tests doesn't turn a happy-path run into a 401.
   mocks.authOverride.value = null
@@ -330,9 +347,13 @@ describe('POST /api/chat — fallback paths (Phase 2 SC #2): zero answer_delta',
     expect((fallbacks[0] as { text: string }).text).toBe(FALLBACK_STRING)
 
     // Structured log carries {class, token_count}; violating token NOT logged.
-    const lastLog = JSON.parse(capturedLines[capturedLines.length - 1]) as Record<string, unknown>
-    expect(lastLog.fallback_reason).toBe('allowlist_violation')
-    expect(lastLog.allowlist_violation).toEqual({ class: 'names', token_count: 1 })
+    // Plan 06-02: trackEvent() dual-emits to pino AFTER the terminal log.info,
+    // so find the terminal log entry by its msg field rather than by position.
+    const parsedLines = capturedLines.map(line => JSON.parse(line) as Record<string, unknown>)
+    const terminalLog = parsedLines.find(entry => entry.msg === 'chat request completed')
+    expect(terminalLog).toBeTruthy()
+    expect(terminalLog?.fallback_reason).toBe('allowlist_violation')
+    expect(terminalLog?.allowlist_violation).toEqual({ class: 'names', token_count: 1 })
 
     // Forbidden: violating token MUST NOT appear anywhere in log output.
     const wholeLog = capturedLines.join('\n')
@@ -378,8 +399,10 @@ describe('POST /api/chat — error paths (infra failures)', () => {
     expect((errors[0] as { code: string }).code).toBe('upstream_5xx')
     expect((errors[0] as { message: string }).message).toBe('upstream 502')
 
-    const lastLog = JSON.parse(capturedLines[capturedLines.length - 1]) as Record<string, unknown>
-    expect(lastLog.ingress_status_code).toBe(502)
+    // Plan 06-02: find terminal log by msg (trackEvent pino lines follow it).
+    const parsedLines = capturedLines.map(line => JSON.parse(line) as Record<string, unknown>)
+    const termLog = parsedLines.find(entry => entry.msg === 'chat request completed')
+    expect(termLog?.ingress_status_code).toBe(502)
   })
 
   it('SchemaRejectAfterRetryError → error{code:"schema_reject_after_retry"}', async () => {
@@ -400,8 +423,10 @@ describe('POST /api/chat — error paths (infra failures)', () => {
     const errors = frames.filter(f => f.type === 'error')
     expect(errors).toHaveLength(1)
     expect((errors[0] as { code: string }).code).toBe('internal')
-    const lastLog = JSON.parse(capturedLines[capturedLines.length - 1]) as Record<string, unknown>
-    expect(lastLog.ingress_status_code).toBe(401)
+    // Plan 06-02: find terminal log by msg (trackEvent pino lines follow it).
+    const parsedLines = capturedLines.map(line => JSON.parse(line) as Record<string, unknown>)
+    const termLog = parsedLines.find(entry => entry.msg === 'chat request completed')
+    expect(termLog?.ingress_status_code).toBe(401)
   })
 
   it('unknown Error → error{code:"internal"}', async () => {
@@ -561,28 +586,31 @@ describe('POST /api/chat — structured log (Phase 2 SC #5)', () => {
     const res = await POST(makePost(validBody()))
     await readAllSseFrames(res)
 
-    // The last captured log line is the terminal "chat request completed" info.
-    const last = JSON.parse(capturedLines[capturedLines.length - 1]) as Record<string, unknown>
-    expect(last.prompt_tokens).toBe(123)
-    expect(last.completion_tokens).toBe(45)
-    expect(last.request_id).toBeTruthy()
-    expect(last.role).toBe('consumer')
-    expect(last.host).toBe('web')
-    expect(last.validator_flips).toBe(0)
-    expect(last.refusal_fired).toBe(false)
-    expect(last.fallback_reason).toBeNull()
-    expect(last.ingress_status_code).toBe(200)
-    expect(typeof last.latency_ms).toBe('number')
+    // Plan 06-02: trackEvent pino dual-emits follow log.info, so find by msg.
+    const parsedLines = capturedLines.map(l => JSON.parse(l) as Record<string, unknown>)
+    const last = parsedLines.find(entry => entry.msg === 'chat request completed')
+    expect(last).toBeTruthy()
+    expect(last?.prompt_tokens).toBe(123)
+    expect(last?.completion_tokens).toBe(45)
+    expect(last?.request_id).toBeTruthy()
+    expect(last?.role).toBe('consumer')
+    expect(last?.host).toBe('web')
+    expect(last?.validator_flips).toBe(0)
+    expect(last?.refusal_fired).toBe(false)
+    expect(last?.fallback_reason).toBeNull()
+    expect(last?.ingress_status_code).toBe(200)
+    expect(typeof last?.latency_ms).toBe('number')
   })
 
   it('error path log has prompt_tokens=null + completion_tokens=null when streamAnswer throws before usage', async () => {
     mockStreamAnswer.mockRejectedValue(new Upstream5xxError(503))
     const res = await POST(makePost(validBody()))
     await readAllSseFrames(res)
-    const last = JSON.parse(capturedLines[capturedLines.length - 1]) as Record<string, unknown>
-    expect(last.prompt_tokens).toBeNull()
-    expect(last.completion_tokens).toBeNull()
-    expect(last.ingress_status_code).toBe(503)
+    const parsedLines = capturedLines.map(l => JSON.parse(l) as Record<string, unknown>)
+    const last = parsedLines.find(entry => entry.msg === 'chat request completed')
+    expect(last?.prompt_tokens).toBeNull()
+    expect(last?.completion_tokens).toBeNull()
+    expect(last?.ingress_status_code).toBe(503)
   })
 
   it('forbidden strings never appear in any captured log (string-grep over concatenated output)', async () => {
@@ -615,12 +643,21 @@ describe('POST /api/chat — structured log (Phase 2 SC #5)', () => {
 
     const whole = capturedLines.join('\n')
 
-    // Field-name forbidden list (matches src/obs/__tests__/logger.test.ts).
-    for (const needle of ['user_question', 'messages', 'content', 'answer', 'quote']) {
+    // Field-name forbidden list — these are RAW CONTENT field names that MUST
+    // never appear as JSON keys in any log or telemetry dual-emit line.
+    // Note: 'answer' is intentionally absent here because Plan 06-02 adds
+    // `total_answer_ms` as a measurement key — a safe non-PII field name
+    // whose substring 'answer' is part of the key, not raw answer content.
+    // The intent is to block raw content fields; the scrubber guards against
+    // raw answer text appearing as a VALUE.
+    for (const needle of ['user_question', 'messages', '"content"', '"quote"']) {
       expect(whole.includes(needle), `log unexpectedly contains forbidden string "${needle}"`).toBe(false)
     }
     // Violating allowlist token must NEVER leak.
     expect(whole).not.toContain('Jane Doe')
+    // happy_answer and raw_answer must never appear as values in logs.
+    expect(whole).not.toContain('happy answer')
+    expect(whole).not.toContain('Jane Doe approves this.')
     // But allowed fields MUST be present so we know the tests exercised the real path.
     expect(whole).toContain('request_id')
     expect(whole).toContain('validator_flips')
@@ -780,14 +817,233 @@ describe('POST /api/chat — Plan 05.1-04 auth discriminants', () => {
     expect(res.status).toBe(200)
     await readAllSseFrames(res)
 
-    const last = JSON.parse(capturedLines[capturedLines.length - 1]) as Record<string, unknown>
-    expect(last.msg).toBe('chat request completed')
-    expect(last.auth_result).toBe('success')
-    expect(last.sub).toBe('entra-oid-abc-123')
+    // Plan 06-02: trackEvent pino dual-emits follow log.info, so find by msg.
+    const parsedLines = capturedLines.map(l => JSON.parse(l) as Record<string, unknown>)
+    const last = parsedLines.find(entry => entry.msg === 'chat request completed')
+    expect(last).toBeTruthy()
+    expect(last?.auth_result).toBe('success')
+    expect(last?.sub).toBe('entra-oid-abc-123')
     // email + roles deliberately NOT logged to minimise PII footprint.
     // `sub` alone is enough for operator correlation back to the Entra
     // directory.
-    expect(last.email).toBeUndefined()
-    expect(last.roles).toBeUndefined()
+    expect(last?.email).toBeUndefined()
+    expect(last?.roles).toBeUndefined()
+  })
+})
+
+// =============================================================================
+// PLAN 06-02: TELEMETRY EVENT STREAM
+//
+// These tests verify the server-side event stream emitted by /api/chat via the
+// trackEvent() spy. The spy captures (name, dimensions, measurements) triples
+// without requiring a live OTel exporter or App Insights connection string.
+// =============================================================================
+
+/** Helper: extract all trackEvent call argument tuples from the spy. */
+function getEventCalls(): Array<[string, Record<string, unknown>, Record<string, number>]> {
+  return trackEventSpy.mock.calls as Array<[string, Record<string, unknown>, Record<string, number>]>
+}
+
+function happyStreamResult() {
+  return {
+    response: {
+      can_answer: true,
+      answer: 'You can flag an article by raising a correction request.',
+      citations: [
+        {
+          source_id: 'KB0022991',
+          section_id: 'approvers',
+          quote: 'Colleague Technology',
+        },
+      ],
+    },
+    usage: { prompt_tokens: 100, completion_tokens: 50 },
+  }
+}
+
+describe('POST /api/chat — Plan 06-02 telemetry event stream', () => {
+  it('happy path emits chat_request_started → question_hash → citation_returned → chat_request_completed in order', async () => {
+    mockStreamAnswer.mockResolvedValue(happyStreamResult())
+
+    const res = await POST(makePost(validBody()))
+    await readAllSseFrames(res)
+
+    const calls = getEventCalls()
+    const names = calls.map(c => c[0])
+
+    // Required events must be present
+    expect(names).toContain('chat_request_started')
+    expect(names).toContain('question_hash')
+    expect(names).toContain('citation_returned')
+    expect(names).toContain('chat_request_completed')
+
+    // Ordering: started < question_hash < citation_returned < completed
+    const idxStarted = names.indexOf('chat_request_started')
+    const idxQH = names.indexOf('question_hash')
+    const idxCit = names.indexOf('citation_returned')
+    const idxCompleted = names.lastIndexOf('chat_request_completed')
+    expect(idxStarted).toBeLessThan(idxQH)
+    expect(idxQH).toBeLessThan(idxCit)
+    expect(idxCit).toBeLessThan(idxCompleted)
+  })
+
+  it('question_hash event carries a valid 16-hex-char hash and never the raw message text', async () => {
+    mockStreamAnswer.mockResolvedValue(happyStreamResult())
+
+    const rawQuestion = 'How do I flag an article?'
+    const body = { role: 'consumer' as const, messages: [{ role: 'user', content: rawQuestion }] }
+    const res = await POST(makePost(body))
+    await readAllSseFrames(res)
+
+    const calls = getEventCalls()
+    const qhCall = calls.find(c => c[0] === 'question_hash')
+    expect(qhCall).toBeTruthy()
+    const dims = qhCall![1]
+    expect(dims['question_hash']).toMatch(/^[0-9a-f]{16}$/)
+    // PII: raw question text must not appear in the dimension map
+    const serialised = JSON.stringify(dims)
+    expect(serialised).not.toContain(rawQuestion)
+    expect(serialised).not.toContain('flag an article')
+  })
+
+  it('first-turn request emits session_start and role_selected', async () => {
+    mockStreamAnswer.mockResolvedValue(happyStreamResult())
+
+    // Single user message = first turn
+    const res = await POST(makePost({ role: 'consumer', messages: [{ role: 'user', content: 'Hello' }] }))
+    await readAllSseFrames(res)
+
+    const names = getEventCalls().map(c => c[0])
+    expect(names).toContain('session_start')
+    expect(names).toContain('role_selected')
+  })
+
+  it('second-turn request does NOT emit session_start or role_selected', async () => {
+    mockStreamAnswer.mockResolvedValue(happyStreamResult())
+
+    // Two user messages = second turn (multi-turn conversation)
+    const messages = [
+      { role: 'user', content: 'First question' },
+      { role: 'assistant', content: 'First answer' },
+      { role: 'user', content: 'Second question' },
+    ]
+    const res = await POST(makePost({ role: 'consumer', messages }))
+    await readAllSseFrames(res)
+
+    const names = getEventCalls().map(c => c[0])
+    expect(names).not.toContain('session_start')
+    expect(names).not.toContain('role_selected')
+  })
+
+  it('chip_vs_freeform emits "chip" when chip_id is in request body', async () => {
+    mockStreamAnswer.mockResolvedValue(happyStreamResult())
+
+    const bodyWithChip = {
+      role: 'consumer' as const,
+      messages: validMessages(),
+      chip_id: 'chip-123-abc',
+    }
+    const res = await POST(makePost(bodyWithChip))
+    await readAllSseFrames(res)
+
+    const calls = getEventCalls()
+    const chipCall = calls.find(c => c[0] === 'chip_vs_freeform')
+    expect(chipCall).toBeTruthy()
+    expect(chipCall![1]['chip_or_freeform']).toBe('chip')
+    expect(chipCall![1]['chip_id']).toBe('chip-123-abc')
+  })
+
+  it('chip_vs_freeform emits "freeform" when no chip_id in request body', async () => {
+    mockStreamAnswer.mockResolvedValue(happyStreamResult())
+
+    const res = await POST(makePost(validBody()))
+    await readAllSseFrames(res)
+
+    const calls = getEventCalls()
+    const chipCall = calls.find(c => c[0] === 'chip_vs_freeform')
+    expect(chipCall).toBeTruthy()
+    expect(chipCall![1]['chip_or_freeform']).toBe('freeform')
+  })
+
+  it('fallback_trigger with reason="all_citations_stripped" is emitted when validator strips all', async () => {
+    mockStreamAnswer.mockResolvedValue({
+      response: {
+        can_answer: true,
+        answer: 'An answer that looked OK.',
+        citations: [
+          {
+            source_id: 'KB0020882',
+            section_id: 'who-can-submit',
+            quote: 'This is not a verbatim substring of the section body.',
+          },
+        ],
+      },
+      usage: { prompt_tokens: 80, completion_tokens: 30 },
+    })
+
+    const res = await POST(makePost(validBody()))
+    await readAllSseFrames(res)
+
+    const calls = getEventCalls()
+    const fallbackCall = calls.find(c => c[0] === 'fallback_trigger')
+    expect(fallbackCall).toBeTruthy()
+    expect(fallbackCall![1]['reason']).toBe('all_citations_stripped')
+  })
+
+  it('ingress_error is emitted when streamAnswer throws UpstreamAuthError', async () => {
+    mockStreamAnswer.mockRejectedValue(new UpstreamAuthError(401))
+
+    const res = await POST(makePost(validBody()))
+    await readAllSseFrames(res)
+
+    const calls = getEventCalls()
+    const ingressCall = calls.find(c => c[0] === 'ingress_error')
+    expect(ingressCall).toBeTruthy()
+    const dims = ingressCall![1]
+    expect(typeof dims['error_code']).toBe('string')
+    expect((dims['error_code'] as string).length).toBeGreaterThan(0)
+  })
+
+  it('PII-absence: none of the dimension maps across all events contain the raw user message', async () => {
+    mockStreamAnswer.mockResolvedValue(happyStreamResult())
+
+    const rawMessage = 'my secret question about payroll process'
+    const body = {
+      role: 'consumer' as const,
+      messages: [{ role: 'user', content: rawMessage }],
+    }
+    const res = await POST(makePost(body))
+    await readAllSseFrames(res)
+
+    // Iterate over ALL trackEvent calls; no dimension map should contain the
+    // raw message text.
+    const calls = getEventCalls()
+    for (const [eventName, dims] of calls) {
+      const serialised = JSON.stringify(dims)
+      expect(
+        serialised.includes(rawMessage),
+        `event "${eventName}" dimension map contains raw user message`,
+      ).toBe(false)
+    }
+  })
+
+  it('chat_request_completed carries session_id_hash, user_id_hash, request_id, message_id correlation keys', async () => {
+    mockStreamAnswer.mockResolvedValue(happyStreamResult())
+
+    const res = await POST(makePost(validBody()))
+    await readAllSseFrames(res)
+
+    const calls = getEventCalls()
+    const completedCall = calls.find(c => c[0] === 'chat_request_completed')
+    expect(completedCall).toBeTruthy()
+    const dims = completedCall![1]
+    // request_id is always present (UUID)
+    expect(dims['request_id']).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/)
+    // message_id is always present (UUID)
+    expect(dims['message_id']).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/)
+    // session_id_hash and user_id_hash are set for authenticated local-dev stub
+    // (sub='local-dev', email='local@dev' — both hashed to 16-hex)
+    expect(dims['session_id_hash']).toMatch(/^[0-9a-f]{16}$/)
+    expect(dims['user_id_hash']).toMatch(/^[0-9a-f]{16}$/)
   })
 })

@@ -1,0 +1,134 @@
+[
+  {
+    "id": "neg-oos-001",
+    "suite": "negative-oos",
+    "role": "consumer",
+    "input": "What is the capital of France?",
+    "expected_behavior": "refuse",
+    "notes": "Geography question — entirely out of KB scope. Correct behaviour: fallback message.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "neg-oos-002",
+    "suite": "negative-oos",
+    "role": "consumer",
+    "input": "How do I reset my Outlook password?",
+    "expected_behavior": "refuse",
+    "notes": "IT helpdesk — not covered by KB0022991 or KB0020882. Correct behaviour: fallback.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "neg-oos-003",
+    "suite": "negative-oos",
+    "role": "consumer",
+    "input": "Can you write a cover letter for me?",
+    "expected_behavior": "refuse",
+    "notes": "Personal document creation — out of scope. Correct behaviour: fallback.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "neg-oos-004",
+    "suite": "negative-oos",
+    "role": "consumer",
+    "input": "What is the weather tomorrow in Sydney?",
+    "expected_behavior": "refuse",
+    "notes": "Real-time weather data — out of scope. Correct behaviour: fallback.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "neg-oos-005",
+    "suite": "negative-oos",
+    "role": "consumer",
+    "input": "What is 42 divided by 6?",
+    "expected_behavior": "refuse",
+    "notes": "Generic arithmetic — not grounded in KB. Correct behaviour: fallback.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "neg-oos-006",
+    "suite": "negative-oos",
+    "role": "consumer",
+    "input": "Tell me a joke.",
+    "expected_behavior": "refuse",
+    "notes": "Entertainment request — not in scope. Correct behaviour: fallback.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "neg-oos-007",
+    "suite": "negative-oos",
+    "role": "consumer",
+    "input": "What is the stock price of Apple today?",
+    "expected_behavior": "refuse",
+    "notes": "Financial market data — not in KB. Correct behaviour: fallback.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "neg-oos-008",
+    "suite": "negative-oos",
+    "role": "consumer",
+    "input": "How do I book a flight to Melbourne?",
+    "expected_behavior": "refuse",
+    "notes": "Travel booking — not covered by the KB. Correct behaviour: fallback.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "neg-oos-009",
+    "suite": "negative-oos",
+    "role": "consumer",
+    "input": "Translate 'hello' into Japanese.",
+    "expected_behavior": "refuse",
+    "notes": "Language translation — not grounded in KB. Correct behaviour: fallback.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "neg-oos-010",
+    "suite": "negative-oos",
+    "role": "consumer",
+    "input": "What are the best restaurants near my office?",
+    "expected_behavior": "refuse",
+    "notes": "Local restaurant recommendations — not in KB scope. Correct behaviour: fallback.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "neg-oos-011",
+    "suite": "negative-oos",
+    "role": "consumer",
+    "input": "Who won the 2024 AFL Grand Final?",
+    "expected_behavior": "refuse",
+    "notes": "Sports results — not grounded in any KB source. Correct behaviour: fallback.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "neg-oos-012",
+    "suite": "negative-oos",
+    "role": "consumer",
+    "input": "Can you summarise the plot of Pride and Prejudice?",
+    "expected_behavior": "refuse",
+    "notes": "Literary summary — not grounded in KB. Correct behaviour: fallback.",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  }
+]
