@@ -31,6 +31,8 @@ const SECRET_KEYS = [
   'ENTRA_TENANT_ID',
   'LLM_API_KEY',
   'LLM_BASE_URL',
+  'APPLICATIONINSIGHTS_CONNECTION_STRING',
+  'QUESTION_HASH_SALT',
 ] as const
 
 let _cache: Record<string, string> | null = null

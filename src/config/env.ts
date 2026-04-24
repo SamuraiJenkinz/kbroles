@@ -126,6 +126,14 @@ const EnvSchema = z.object({
     .min(1)
     .optional()
     .default('us-east-1'),
+
+  // Phase-6 telemetry — Azure Monitor Application Insights OTel distro.
+  // Connection string is OPTIONAL — when absent (local dev, CI without the
+  // secret), the OTel bootstrap falls back gracefully with a console.info log
+  // and does NOT throw. Production operators set this via AWS Secrets Manager
+  // → loadSecrets() → process.env. The value is the full InstrumentationKey=…
+  // string from the App Insights resource overview blade (not the ikey alone).
+  APPLICATIONINSIGHTS_CONNECTION_STRING: z.string().min(1).optional(),
 })
 
 export type Env = z.infer<typeof EnvSchema>

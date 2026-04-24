@@ -15,7 +15,7 @@ const nextConfig: NextConfig = {
   // `Cannot find module 'real-require'` at runtime. Next 16.1+ auto-resolves
   // the transitive chain when the direct packages are declared here
   // (RESEARCH.md §Pattern 5; this project is on Next 16.2.4 — see GH #84766).
-  serverExternalPackages: ['pino', 'pino-pretty'],
+  serverExternalPackages: ['pino', 'pino-pretty', '@azure/monitor-opentelemetry'],
   turbopack: {
     rules: {
       // '*.md' files imported as raw string content. Equivalent to
