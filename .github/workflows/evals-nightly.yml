@@ -1,0 +1,108 @@
+# Nightly slow-eval runner — LLM-judge suites
+#
+# SECRETS REQUIRED:
+#   LLM_JUDGE_API_KEY   — API key for the judge model (e.g. OpenAI gpt-4o-mini).
+#   LLM_JUDGE_BASE_URL  — Base URL for the judge model API (optional; defaults to
+#                         OpenAI public endpoint if omitted).
+#   TEAMS_WEBHOOK_URL   — Incoming webhook URL for #kb-assistant-pilot Teams channel
+#                         (optional; Teams notify is non-blocking if secret absent).
+#
+# Add secrets at: repo Settings > Secrets and variables > Actions.
+# See .planning/phases/06-telemetry-evals-and-pilot-hardening/06-RESEARCH.md
+# §Open Questions #4 for judge-model rationale (gpt-4o-mini authorized deviation).
+#
+# Phase 6 Plan 06-06 added this file.
+# See .planning/phases/06-telemetry-evals-and-pilot-hardening/06-06-ci-cd-integration-PLAN.md
+
+name: Nightly Slow Evals
+
+on:
+  schedule:
+    - cron: '0 20 * * *'   # 20:00 UTC = 06:00 AEST next day
+  workflow_dispatch: {}
+
+jobs:
+  slow-evals:
+    name: Slow evals (LLM-judge suites)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run full eval suite (fast + slow)
+        id: eval
+        run: pnpm eval
+        env:
+          LLM_JUDGE_API_KEY: ${{ secrets.LLM_JUDGE_API_KEY }}
+          LLM_JUDGE_BASE_URL: ${{ secrets.LLM_JUDGE_BASE_URL }}
+          # Production LLM creds intentionally absent — evals call the judge
+          # model directly and, for positional/paired-role, run against a
+          # judge-only pipeline per Plan 06-05.
+
+      - name: Upload eval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-eval-report-${{ github.run_id }}
+          path: |
+            ops/evals/latest.json
+            ops/evals/history/
+            ops/evals/flaky-review.json
+          retention-days: 30
+
+      - name: Open GitHub issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs')
+            let body = 'Nightly eval failed — full report in artifact.'
+            try {
+              const report = JSON.parse(fs.readFileSync('ops/evals/latest.json', 'utf8'))
+              const failingSuites = report.suites.filter(s => !s.threshold_met)
+              body = [
+                '## Failing suites',
+                ...failingSuites.map(s =>
+                  `- **${s.suite}**: pass_rate ${(s.pass_rate * 100).toFixed(1)}% (threshold ${(s.threshold * 100).toFixed(1)}%)`
+                ),
+                '',
+                '<details><summary>Full failures</summary>',
+                '',
+                '```json',
+                JSON.stringify(failingSuites.flatMap(s => s.failures), null, 2),
+                '```',
+                '</details>',
+              ].join('\n')
+            } catch (e) {
+              body += `\n\nReport parse error: ${e.message}`
+            }
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Nightly eval failure ${new Date().toISOString().slice(0, 10)}`,
+              body,
+              labels: ['eval-regression'],
+            })
+
+      - name: Notify Teams on failure
+        if: failure() && env.TEAMS_WEBHOOK_URL != ''
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: |
+          curl -sS -X POST -H 'Content-Type: application/json' \
+            -d "{\"text\":\"[kb-assistant] Nightly eval red — run ${{ github.run_id }} — see issue in repo.\"}" \
+            "$TEAMS_WEBHOOK_URL" || echo "Teams webhook post failed (non-blocking)"

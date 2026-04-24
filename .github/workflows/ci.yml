@@ -1,0 +1,61 @@
+# CI — pull-request and main-branch gate
+#
+# BRANCH PROTECTION: Repository admin must require the "verify" job as a
+# required status check in GitHub Settings > Branches > Branch protection
+# rules for "main". Without this, PRs can merge even if this workflow fails.
+#
+# Phase 6 Plan 06-06 added this file.
+# See .planning/phases/06-telemetry-evals-and-pilot-hardening/06-06-ci-cd-integration-PLAN.md
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    name: Verify (typecheck, lint, test, fast-eval)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Unit + component tests
+        run: pnpm test
+
+      - name: Fast evals (deterministic gate)
+        run: pnpm eval:fast
+        # No LLM_JUDGE_API_KEY needed — entity-allowlist + citation-substring
+        # are string-match only (deterministic, no judge API call).
+        # A red fast-eval here blocks merge.
+
+      - name: Upload eval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fast-eval-report-${{ github.run_id }}
+          path: ops/evals/latest.json
+          retention-days: 7
