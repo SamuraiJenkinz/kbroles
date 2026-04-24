@@ -52,7 +52,9 @@ See: .planning/ROADMAP.md (6 phases, standard depth)
 ## Current Position
 
 Phase: 6 of 6 (Telemetry, Evals & Pilot Hardening) — In progress
-Plan: 5 of 8 (slow-suites-and-llm-judge) — COMPLETE 2026-04-24
+Plan: 6 of 8 (ci-cd-integration) — COMPLETE 2026-04-24
+
+**Phase 6 Plan 06 summary:** Two-tier eval gating wired into GitHub Actions: `ci.yml` (PR gate: typecheck/lint/test/eval:fast on ubuntu-latest, fast-eval-report artifact 7d); `evals-nightly.yml` (cron 0 20 UTC + workflow_dispatch, pnpm eval with judge secrets, latest.json + history/ + flaky-review.json artifact 30d, failure auto-opens GitHub issue labelled eval-regression with failing suites, non-blocking Teams MessageCard notify via TEAMS_WEBHOOK_URL curl); `deploy.yml` patched (header comment, skip_eval_gate boolean input, Fast evals hard gate in build job between Test and Build, check-evals job with 48h green check + 2-consecutive-red block + listWorkflowRunsForRepo, deploy needs changed to [build, check-evals]); `docs/ops/eval-gate-bypass-procedure.md` 1-page runbook with Incident ID obligation and {{STEWARD_NAME}} placeholder. Phase 5.1 two-job structure preserved verbatim. All three YAML files parse-valid via js-yaml. Test baseline 700/700 unit (687 + concurrent 06-03 additions) + 19/19 E2E. Decisions: MessageCard plain-text Teams notify (no Logic App); 48h nightly window; 2-consecutive-red hard block; fast evals HARD gate (no bypass). Admin must add LLM_JUDGE_API_KEY + LLM_JUDGE_BASE_URL + TEAMS_WEBHOOK_URL secrets + set "verify" branch protection. Task commit race: 06-03 concurrent agent picked up deploy.yml + eval-gate-bypass-procedure.md in commit 264944a — content correct.
 
 **Phase 6 Plan 05 summary:** LLM judge abstraction (best-of-3 voting, gpt-4o-mini default) + four slow eval suites (neg-oos ≥95%, paired-role ≥98%, injection-refuse ≥95%, positional |t1-t8| ≤ 2pp) + flake quarantine with history rotation. Key artifacts: `src/evals/runner/judge.ts` (createJudgeClient + judgeBinary, 16 unit tests, mocked OpenAI), `src/evals/runner/flakeQuarantine.ts` (computeFlakes + writeFlakeReport, append-only, 10 unit tests), four fixture JSONs (≥10 entries each), four slow eval suites with `it.skipIf(!LLM_JUDGE_API_KEY)`, `_postRun.eval.ts` archiving latest.json → ops/evals/history/<timestamp>.json + 10-file prune + flake sweep, `pnpm eval:slow` script. Decisions: gpt-4o-mini ~100x cheaper than gpt-4o (authorized deviation from CONTEXT.md); direct createLlmClient+streamAnswer for positional suite (no running server in CI); history/ ISO filenames + 10-file cap; append-only flaky-review.json requires human PR to re-trust. Test baseline 687/687 unit; `LLM_JUDGE_API_KEY= pnpm eval:slow` exits 0 (all-skipped verified); no .eval.ts in pnpm test; typecheck clean.
 
@@ -75,7 +77,9 @@ Status (Phase 5, historical, paused): Plan 05-04 landed the client-side auth run
 
 **Plan 05-01 (prior)** — Plan 05-01 COMPLETE. Deps (@azure/msal-browser@5.8.0, @azure/msal-react@5.3.1, @microsoft/teams-js@2.52.0, jose@6.2.2, mock-jwks@3.3.5). `.npmrc node-linker=hoisted`. EnvSchema +ENTRA_*. `src/auth/{detectHost,msalConfig,msalInstance}.ts` shipped.
 
-Last activity: 2026-04-24 — Phase 6 Plan 02 (question-hash-and-server-events) COMPLETE. Commits: 8a10911 (feat: hash helpers + session exports) / 6e3048e + 091788a (feat: Tasks 2+3 committed via concurrent 06-05 wave) + this metadata commit. Test baseline 687/687 unit + 19/19 E2E. Decisions: session_id_hash=OID hash, user_id_hash=email hash, first-turn gating.
+Last activity: 2026-04-24 — Phase 6 Plan 06 (ci-cd-integration) COMPLETE. Commits: f00853f (feat: ci.yml + evals-nightly.yml) / 264944a (feat: deploy.yml + eval-gate-bypass-procedure.md via concurrent wave staging) + this metadata commit. Test baseline 700/700 unit + 19/19 E2E. Decisions: MessageCard plain-text Teams notify, 48h nightly window, 2-consecutive-red hard block, fast evals HARD gate.
+
+Previous: 2026-04-24 — Phase 6 Plan 02 (question-hash-and-server-events) COMPLETE. Commits: 8a10911 (feat: hash helpers + session exports) / 6e3048e + 091788a (feat: Tasks 2+3 committed via concurrent 06-05 wave) + this metadata commit. Test baseline 687/687 unit + 19/19 E2E. Decisions: session_id_hash=OID hash, user_id_hash=email hash, first-turn gating.
 
 Previous: 2026-04-24 — Phase 6 Plan 05 (slow-suites-and-llm-judge) COMPLETE. Commits: 6e3048e (feat: judge + flakeQuarantine) / 091788a (feat: four slow suites + fixtures + post-run archival) + metadata commit. Test baseline 687/687; pnpm eval:slow exits 0 with all-skipped (no judge key). Decisions: gpt-4o-mini as default judge, direct LLM for positional, append-only flaky-review.json.
 
@@ -85,7 +89,7 @@ Previous: 2026-04-24 — Phase 6 Plan 01 (telemetry-foundation) COMPLETE. Commit
 
 Previous: 2026-04-24 — Phase 5.1 (MMC-IT BFF pivot) COMPLETE + verifier passed + user-approved (human-deploy items tracked as pending-operator-execution). 8 plans × 5 waves × 27 plan/metadata commits + 1 orchestrator lockfile correction (018ba84). Final heads: Wave 1 — d27e249 / e52edb6 / 6ee4f03 / e54dcb6 / a96f804 / f0df9ff; Wave 2 — de258b8 / f8b70c1 / c39091d / b1c071d / adea02a / 9df2387; Wave 3 — 7dabefb / 9346350 / e5aa645; Wave 4 — 561f246 / c357d02 / cad7dbf / 5dc6cfe / 2e09cfc / d0facb4 / 86fcbb5 / 018ba84; Wave 5 — 4d7de2a / 651a8d7 / c7dff73 / 42ecdc0. Phase verification: 05.1-VERIFICATION.md.
 
-Progress: [████████████████████████████████████████░] Phase 6 in progress (Plans 1+4+5 of 8 complete, Plans 2+3+6+7+8 pending); Phases 1–5.1 of 6 complete
+Progress: [████████████████████████████████████████░] Phase 6 in progress (Plans 1+2+3+4+5+6 of 8 complete, Plans 7+8 pending); Phases 1–5.1 of 6 complete
 
 ## Performance Metrics
 
