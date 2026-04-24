@@ -37,5 +37,13 @@ export default defineConfig({
       'src/**/__tests__/**/*.test.tsx',
       'scripts/**/__tests__/**/*.test.ts',
     ],
+    // CRITICAL: exclude eval suites from the main test run.
+    // *.eval.ts files call into the LLM client or Phase 1/2 guards with
+    // real fixture data and must only run under `pnpm eval` / `pnpm eval:fast`
+    // via vitest.eval.config.ts. Picking them up here would trigger API spend
+    // on every PR. (RESEARCH.md Pitfall 5)
+    exclude: [
+      'src/evals/suites/**/*.eval.ts',
+    ],
   },
 })

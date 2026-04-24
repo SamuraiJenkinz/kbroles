@@ -12,7 +12,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "smoke": "node --env-file-if-exists=.env.local --import tsx scripts/phase0-smoke.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "eval": "vitest run --config vitest.eval.config.ts",
+    "eval:fast": "vitest run --config vitest.eval.config.ts src/evals/suites/entity-allowlist.eval.ts src/evals/suites/citation-substring.eval.ts"
   },
   "dependencies": {
     "@aws-sdk/client-secrets-manager": "^3.1036.0",
