@@ -29,6 +29,7 @@ import type { SessionOptions } from 'iron-session'
 import { getIronSession } from 'iron-session'
 import { cookies } from 'next/headers'
 import { env } from '@/config/env'
+import { hashIdentifier } from '@/obs/questionHash'
 
 export interface SessionData {
   user?: {
@@ -91,4 +92,49 @@ export async function clearSession(
 ): Promise<void> {
   const session = await getSession(cookieStore)
   session.destroy()
+}
+
+// ---------------------------------------------------------------------------
+// Telemetry helpers (Phase 6 — Plan 02)
+//
+// These helpers produce PII-safe 16-hex-char hashes for use as telemetry
+// correlation keys. They accept an iron-session IronSession<SessionData>
+// object (the return type of getSession()) and return undefined when the
+// session is unauthenticated, so callers can safely spread the result into
+// EventDimensions without emitting undefined values (trackEvent() strips them
+// automatically, but explicit undefined makes intent clear).
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns a stable 16-hex-char hash of the session's Entra OID.
+ *
+ * Uses `oid` (Entra object ID) as the stable session-level identifier.
+ * The OID is stable across token refreshes and cookie rotations, which makes
+ * it a better join key than the iron-session cookie binary or a transient
+ * access token claim.
+ *
+ * Returns undefined when the session has no authenticated user so that
+ * unauthenticated health probes don't emit a hash for an empty string.
+ */
+export function getSessionIdHash(
+  session: { user?: SessionData['user'] },
+): string | undefined {
+  if (!session.user?.oid) return undefined
+  return hashIdentifier(session.user.oid)
+}
+
+/**
+ * Returns a stable 16-hex-char hash of the session's email (preferred_username).
+ *
+ * Used for per-user distinct-count queries in workbooks without storing UPN.
+ * `email` in SessionData maps to Entra's `preferred_username` claim (set at
+ * /api/auth/callback) — it is stable for a given Azure AD user.
+ *
+ * Returns undefined when the session has no authenticated user.
+ */
+export function getUserIdHash(
+  session: { user?: SessionData['user'] },
+): string | undefined {
+  if (!session.user?.email) return undefined
+  return hashIdentifier(session.user.email)
 }
