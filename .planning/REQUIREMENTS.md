@@ -62,7 +62,7 @@ Requirements for initial pilot release. Each maps to a roadmap phase (see Tracea
 
 - [ ] **FDBK-01**: Thumbs 👍 / 👎 affordance on every assistant message
 - [ ] **FDBK-02**: 👎 opens a fixed-option dropdown — "hallucinated / wrong citation / incomplete / other" — with no free-text field in v1
-- [ ] **FDBK-03**: Feedback events captured to telemetry with `{ message_id, role, rating, citation_source_id, citation_section_id, reason? }`
+- [x] **FDBK-03**: Feedback events captured to telemetry with `{ message_id, role, rating, citation_source_id, citation_section_id, reason? }`
 
 ### Trust & Transparency (TRST)
 
@@ -75,10 +75,10 @@ Requirements for initial pilot release. Each maps to a roadmap phase (see Tracea
 
 ### Telemetry & Measurement (TELE)
 
-- [ ] **TELE-01**: Pre-registered telemetry schema documented and agreed before pilot launch (covers: session start/end, role selected, chip-vs-freeform, question hash, citation returned, citation-click-through, 👍/👎 rating + reason, fallback trigger, flag-a-gap action)
-- [ ] **TELE-02**: Anonymised logging — no raw user question text persisted; question hash only
-- [ ] **TELE-03**: Application Insights / OpenTelemetry integration collecting the above schema
-- [ ] **TELE-04**: Documented process for monthly pull of rejected / flagged KB article rate from ServiceNow — named Content Steward, cadence, data source (knowledge feedback tasks + article workflow state)
+- [x] **TELE-01**: Pre-registered telemetry schema documented and agreed before pilot launch (covers: session start/end, role selected, chip-vs-freeform, question hash, citation returned, citation-click-through, 👍/👎 rating + reason, fallback trigger, flag-a-gap action)
+- [x] **TELE-02**: Anonymised logging — no raw user question text persisted; question hash only
+- [x] **TELE-03**: Application Insights / OpenTelemetry integration collecting the above schema
+- [x] **TELE-04**: Documented process for monthly pull of rejected / flagged KB article rate from ServiceNow — named Content Steward, cadence, data source (knowledge feedback tasks + article workflow state)
 
 ### Content & Corpus Management (CORP)
 
@@ -215,14 +215,14 @@ Each v1 requirement maps to exactly one phase.
 | FBK-04 | Phase 4 | Complete |
 | FDBK-01 | Phase 3 | Complete |
 | FDBK-02 | Phase 3 | Complete |
-| FDBK-03 | Phase 6 | Pending |
+| FDBK-03 | Phase 6 | Complete |
 | TRST-01 | Phase 4 | Complete |
 | TRST-02 | Phase 4 | Complete |
 | UTIL-01 | Phase 3 | Complete |
-| TELE-01 | Phase 6 | Pending |
-| TELE-02 | Phase 6 | Pending |
-| TELE-03 | Phase 6 | Pending |
-| TELE-04 | Phase 6 | Pending |
+| TELE-01 | Phase 6 | Complete |
+| TELE-02 | Phase 6 | Complete |
+| TELE-03 | Phase 6 | Complete |
+| TELE-04 | Phase 6 | Complete |
 | CORP-01 | Phase 1 | Complete |
 | CORP-02 | Phase 2 | Complete |
 | DELV-01 | Phase 5.1 | Complete |

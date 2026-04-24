@@ -7,7 +7,41 @@ See: .planning/REQUIREMENTS.md (49 v1 requirements across 12 categories)
 See: .planning/ROADMAP.md (6 phases, standard depth)
 
 **Core value:** Every answer is verifiable against the authoritative SOP — users read the cited source section without leaving the conversation. No ungrounded answers, no invented field names or approver names.
-**Current focus:** Phase 5 PAUSED — architectural pivot to MMC-IT-aligned BFF pattern (see "Phase 5 Pivot Decision" below). Next: `/gsd:insert-phase 5.1` to plan the pivot.
+**Current focus:** v1 milestone COMPLETE as of 2026-04-24. All 6 phases + Phase 5.1 pivot shipped. Next: `/gsd:audit-milestone` or `/gsd:complete-milestone`.
+
+## Phase 6 Completion (2026-04-24)
+
+Phase 6 (Telemetry, Evals & Pilot Hardening) shipped in 4 waves with 8 plans (17 plan commits). Phase verifier passed 4/5 must-haves from code; SC#5 (pilot cohort onboarding + ≥50% weekly session) + 3 dashboard/pre-flight items marked human_needed and user-approved as pending-operator-execution.
+
+**Deliverables:**
+- Azure Monitor OTel bootstrap (instrumentation.node.ts) + `trackEvent()` wrapper with pino dual-emit
+- questionHash/hashIdentifier (NFC + salt + SHA-256/16-hex) + getSessionIdHash/getUserIdHash additive exports
+- EventSchema catalog (15 event names) — single source of truth for client + server + workbook KQL
+- 16 trackEvent calls wired into /api/chat pipeline with first-turn gating + PII-absence test enforcement
+- `/api/feedback` + `/api/telemetry` BFF endpoints (iron-session gate, Zod validation, closed-enum sink, PII-key scrub) + sendBeacon+keepalive client helper + 👍/👎/citation-chip/flag-a-gap UI wiring + message_id SSE echo
+- Eval harness: bespoke Vitest runner (vitest.eval.config.ts isolation), 6 suites (entity-allowlist, citation-substring, negative-oos, paired-role, injection-refuse, positional), judge best-of-3 (gpt-4o-mini default ~$0.36/mo), flake quarantine + 10-file history rotation, `pnpm eval:fast` + `eval:slow` + `eval` scripts
+- CI/CD: ci.yml PR gate (typecheck/lint/test/eval:fast), evals-nightly.yml cron 20:00 UTC with issue-open + Teams notify, deploy.yml hard-gate on fast evals + `check-evals` job (48h-green window + 2-consecutive-red block + `skip_eval_gate` bypass), eval-gate-bypass-procedure.md runbook
+- Workbook: ARM template (5 sections — Usage/Quality/Gaps/Health/EvalTrend) with deterministic workbookId; Section 5 documented as inert pending `eval_run_completed` emission follow-up
+- Alerts: alerts.bicep (action group + 4 scheduledQueryRules), provision.sh pulling webhook from AWS Secrets Manager, teams-webhook-validation-procedure.md with Logic-App fallback path
+- Steward loop: scripts/pull-servicenow-feedback.ts with --baseline, scripts/validate-servicenow-schema.ts dry-run, steward-monthly.yml (cron 1st + weekend-skip + issue-open + archive commit), weekly-digest.yml (Sunday 23:00 UTC = Monday 09:00 AEST Teams card with shell-injection-safe jq envelope), content-steward-runbook.md + measurement-plan.md with {{STEWARD_NAME}} placeholders pre-registered per Pitfall 14
+
+**Test baseline:** 728/728 unit + 22/22 E2E green. typecheck clean. `pnpm eval:fast` exits 0 (both deterministic suites pass thresholds). `LLM_JUDGE_API_KEY= pnpm eval:slow` skips cleanly.
+
+**Commit attribution note:** Parallel wave staging races resulted in a few cross-plan commits (e.g. 06-02's eventSchema.ts + chat route changes bundled into 06-05's commits; 06-06's deploy.yml + bypass doc bundled into 06-03's first commit; 06-08's scripts + SECRET_KEYS bundled into 06-07's second commit). All files are present and correct; commit labels are noisy but functionality is complete. Documented in each affected SUMMARY.md.
+
+**Human-needed items (user-approved as pending-operator-execution 2026-04-24):**
+1. Fill {{STEWARD_NAME}}/{{STEWARD_BACKUP_NAME}}/{{SIGNOFF_DATE}} in measurement-plan.md + content-steward-runbook.md before pilot day 1
+2. Pilot cohort onboarding (Entra `KbAssistant.User` role grant, URL share, About tooltip confirmation) + ≥50% weekly session tracking across first 2 pilot weeks
+3. Live App Insights dashboard refresh visibility check with connection string configured on Windows deployment
+4. Run `pnpm sn:validate` with live SN credentials; paste output into runbook Schema Validation section
+
+**Final heads per wave:**
+- Wave 1: 5261640 / 7170a81 / 3ce9b05 / efefd9b / 3df5e9d / 5eed709
+- Wave 2: 8a10911 / 6e3048e / 091788a / 1c1e5e7 / b92f387
+- Wave 3: 264944a / 325834e / b48f12e / f00853f / b1c70d7 / 5f91ba1
+- Wave 4: 418e264 / be9d974 / e700632 / 67e979c / 0acb0c1 / 11ce4e2
+
+Phase verification: 06-VERIFICATION.md (status: human_needed, 4/5 must-haves verified from code; 4 operator tasks scoped).
 
 ## Phase 5 Pivot Decision (2026-04-23)
 
