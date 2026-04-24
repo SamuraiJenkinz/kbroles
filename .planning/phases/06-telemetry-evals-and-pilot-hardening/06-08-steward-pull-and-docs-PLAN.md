@@ -17,6 +17,7 @@ files_modified:
   - ops/rejected-articles/README.md
   - docs/content-steward-runbook.md
   - docs/measurement-plan.md
+  - vitest.config.ts
 autonomous: true
 blocks_execution_on:
   - "Operator must provision a ServiceNow service account with read access to kb_knowledge + kb_feedback and store credentials as JSON blob in AWS Secrets Manager at /mmc/cts/kb-assistant (key: SERVICENOW_SERVICE_ACCOUNT)"
@@ -237,7 +238,8 @@ Output: `scripts/pull-servicenow-feedback.ts` + `scripts/validate-servicenow-sch
   <verify>
     - `pnpm tsc --noEmit scripts/pull-servicenow-feedback.ts` typechecks.
     - `pnpm test scripts/__tests__/pull-servicenow-feedback.test.ts` passes (≥5 assertions).
-    - `pnpm test` overall: 597+ prior + new script test, all green. Scripts do NOT appear in the main test glob since they are outside `src/` — but confirm Vitest includes `scripts/__tests__/**`. If the main vitest.config.ts's `include` is `['src/**/*.test.*']`, explicitly add `scripts/__tests__/**/*.test.*` to pick up the script test.
+    - Extend `vitest.config.ts` so script tests run under `pnpm test`: add `scripts/__tests__/**/*.test.*` to the Vitest `include` glob (next to the existing `src/**/*.test.*`). This is unconditional — do NOT skip on the assumption the glob already covers scripts/. Commit the config change in the same commit as the test file.
+    - `pnpm test` overall: 597+ prior + new script test, all green; the new script test must show up in the run summary (not silently skipped).
     - `ls ops/rejected-articles/` shows the placeholder README and .gitkeep.
   </verify>
   <done>
@@ -379,8 +381,10 @@ Output: `scripts/pull-servicenow-feedback.ts` + `scripts/validate-servicenow-sch
              - name: Post to Teams
                env:
                  TEAMS: ${{ secrets.TEAMS_WEBHOOK_URL }}
+                 SUMMARY: ${{ steps.q.outputs.summary }}
                run: |
-                 SUMMARY='${{ steps.q.outputs.summary }}'
+                 # Read SUMMARY from the env var (not an inline expression) to avoid shell-injection
+                 # on quotes/newlines in the KQL JSON output. jq --arg reads stdin env vars safely.
                  PAYLOAD=$(jq -n --arg s "$SUMMARY" '{text: ("**Weekly KB Assistant Digest**\n```json\n" + $s + "\n```\nWorkbook: https://portal.azure.com/#@tenant/.../workbook")}')
                  curl -sS -X POST -H 'Content-Type: application/json' -d "$PAYLOAD" "$TEAMS"
        ```
