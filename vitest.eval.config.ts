@@ -20,5 +20,11 @@ export default defineConfig({
     hookTimeout: 60000,
     reporters: ['default'],
     pool: 'forks',
+    // Suites must run sequentially (not in parallel) so that mergeAndWriteReport
+    // does not encounter a read-modify-write race when two suites try to update
+    // ops/evals/latest.json at the same time. maxWorkers=1 enforces sequential
+    // file execution while still isolating each suite in its own fork.
+    maxWorkers: 1,
+    minWorkers: 1,
   },
 })

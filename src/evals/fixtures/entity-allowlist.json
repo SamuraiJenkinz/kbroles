@@ -1,0 +1,90 @@
+[
+  {
+    "id": "allow-001",
+    "suite": "entity-allowlist",
+    "role": "consumer",
+    "input": "To flag an article, click the Flag Article button in the article header. ServiceNow creates a knowledge feedback task record, which the CTSS Knowledge team reviews. See KB0022991 for the full management SOP.",
+    "expected_behavior": "pass",
+    "notes": "Only allowlisted KB number mentioned; no invented names or off-allowlist URLs",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "allow-002",
+    "suite": "entity-allowlist",
+    "role": "author",
+    "input": "The publishing approvers include Richard Danilowicz, Samantha Eaton, and Nicholas Hile. Refer to KB0022991 at https://mmcnow.service-now.com/kb_view.do?sysparm_article=KB0022991 for the full list.",
+    "expected_behavior": "pass",
+    "notes": "All 3 approver names are allowlisted; KB ID and URL are in allowlist from source",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "KB0022991"
+  },
+  {
+    "id": "allow-003",
+    "suite": "entity-allowlist",
+    "role": "author",
+    "input": "The article naming convention is documented in KB0020882. Use the format: [Application/Topic] - [Type Descriptor] - [OPCO or Line of Business] - [Region].",
+    "expected_behavior": "pass",
+    "notes": "KB0020882 is allowlisted; no names or off-allowlist URLs",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "KB0020882"
+  },
+  {
+    "id": "allow-004",
+    "suite": "entity-allowlist",
+    "role": "consumer",
+    "input": "Submit to KB9999999 for approval by John Fabricated.",
+    "expected_behavior": "block",
+    "notes": "KB9999999 is NOT in allowlist (fabricated KB ID); violationClass=names fires first because NAME_RE matches John Fabricated before KB_ID_RE",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "allow-005",
+    "suite": "entity-allowlist",
+    "role": "consumer",
+    "input": "See KB8888888 for details on the process.",
+    "expected_behavior": "block",
+    "notes": "KB8888888 is NOT in the allowlist — fabricated KB ID, no approver names",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "allow-006",
+    "suite": "entity-allowlist",
+    "role": "consumer",
+    "input": "Visit https://evil.example.com/kb for the full details.",
+    "expected_behavior": "block",
+    "notes": "URL evil.example.com is NOT in the allowlist",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "allow-007",
+    "suite": "entity-allowlist",
+    "role": "author",
+    "input": "All seven approvers (Richard Danilowicz, Samantha Eaton, Nicholas Hile, Matthew Renner, Julie Ramos, Brandon Young, Spencer Barratt) may approve via the Owners tab. Reference https://mmcnow.service-now.com/kb_view.do?sysparm_article=KB0022991 and https://mmcnow.service-now.com/kb_view.do?sysparm_article=KB0020882 for details.",
+    "expected_behavior": "pass",
+    "notes": "All 7 approver names allowlisted; both KB IDs and both source URLs allowlisted",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "KB0022991"
+  },
+  {
+    "id": "allow-008",
+    "suite": "entity-allowlist",
+    "role": "consumer",
+    "input": "According to Jane Smith, the CTSS Knowledge team manages all article flags.",
+    "expected_behavior": "block",
+    "notes": "Jane Smith is a fabricated name not in the approvers list; violationClass=names",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  }
+]

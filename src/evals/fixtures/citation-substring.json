@@ -1,0 +1,134 @@
+[
+  {
+    "id": "cit-001",
+    "suite": "citation-substring",
+    "role": "consumer",
+    "input": "{\"can_answer\":true,\"answer\":\"To flag an article, click the Flag Article button in the article header.\",\"citations\":[{\"source_id\":\"KB0022991\",\"section_id\":\"flagging-articles\",\"quote\":\"Any user with read access can flag an article.\"}]}",
+    "expected_behavior": "pass",
+    "notes": "Verbatim from KB0022991 flagging-articles section",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "KB0022991"
+  },
+  {
+    "id": "cit-002",
+    "suite": "citation-substring",
+    "role": "consumer",
+    "input": "{\"can_answer\":true,\"answer\":\"Flagging is the correct path for any content concern raised by a non-SME.\",\"citations\":[{\"source_id\":\"KB0022991\",\"section_id\":\"flagging-articles\",\"quote\":\"Flagging is the correct path for any content concern raised by a non-SME.\"}]}",
+    "expected_behavior": "pass",
+    "notes": "Verbatim from KB0022991 flagging-articles section (last paragraph; no markdown bold markers)",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "KB0022991"
+  },
+  {
+    "id": "cit-003",
+    "suite": "citation-substring",
+    "role": "author",
+    "input": "{\"can_answer\":true,\"answer\":\"You cannot edit a published KB directly.\",\"citations\":[{\"source_id\":\"KB0022991\",\"section_id\":\"publishing-approval\",\"quote\":\"Cannot edit a Published KB directly\"}]}",
+    "expected_behavior": "pass",
+    "notes": "Verbatim phrase from KB0022991 publishing-approval section (inside bold marker text)",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "KB0022991"
+  },
+  {
+    "id": "cit-004",
+    "suite": "citation-substring",
+    "role": "author",
+    "input": "{\"can_answer\":true,\"answer\":\"Deleted KBs cannot be recovered.\",\"citations\":[{\"source_id\":\"KB0022991\",\"section_id\":\"edit-retire-delete\",\"quote\":\"Deleted KBs cannot be recovered\"}]}",
+    "expected_behavior": "pass",
+    "notes": "Verbatim from KB0022991 edit-retire-delete section",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "KB0022991"
+  },
+  {
+    "id": "cit-005",
+    "suite": "citation-substring",
+    "role": "author",
+    "input": "{\"can_answer\":true,\"answer\":\"Article authoring is scoped to Tier II and Tier III support groups.\",\"citations\":[{\"source_id\":\"KB0020882\",\"section_id\":\"who-can-submit\",\"quote\":\"Article authoring is scoped to Tier II and Tier III support groups, Subject Matter Experts, and Knowledge team members.\"}]}",
+    "expected_behavior": "pass",
+    "notes": "Verbatim from KB0020882 who-can-submit section",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "KB0020882"
+  },
+  {
+    "id": "cit-006",
+    "suite": "citation-substring",
+    "role": "author",
+    "input": "{\"can_answer\":true,\"answer\":\"The title must follow the 4-part naming convention.\",\"citations\":[{\"source_id\":\"KB0020882\",\"section_id\":\"naming-convention\",\"quote\":\"160 character hard limit\"}]}",
+    "expected_behavior": "pass",
+    "notes": "Verbatim from KB0020882 naming-convention section",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "KB0020882"
+  },
+  {
+    "id": "cit-007",
+    "suite": "citation-substring",
+    "role": "consumer",
+    "input": "{\"can_answer\":true,\"answer\":\"The ServiceNow form has required fields.\",\"citations\":[{\"source_id\":\"SNOW_FORM\",\"section_id\":\"required-fields\",\"quote\":\"Pre-filled as \\\"Colleague Technology\\\". Do not change.\"}]}",
+    "expected_behavior": "pass",
+    "notes": "Verbatim from SNOW_FORM required-fields section",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "SNOW_FORM"
+  },
+  {
+    "id": "cit-008",
+    "suite": "citation-substring",
+    "role": "consumer",
+    "input": "{\"can_answer\":true,\"answer\":\"The article has a valid to date.\",\"citations\":[{\"source_id\":\"SNOW_FORM\",\"section_id\":\"workflow-fields\",\"quote\":\"Auto-set to 1 year (365 days) from publication date.\"}]}",
+    "expected_behavior": "pass",
+    "notes": "Verbatim from SNOW_FORM workflow-fields section",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "SNOW_FORM"
+  },
+  {
+    "id": "cit-009",
+    "suite": "citation-substring",
+    "role": "consumer",
+    "input": "{\"can_answer\":true,\"answer\":\"OK.\",\"citations\":[{\"source_id\":\"KB0022991\",\"section_id\":\"flagging-articles\",\"quote\":\"This text is not in the actual source document at all.\"}]}",
+    "expected_behavior": "strip",
+    "notes": "Fabricated quote; validator must strip citation and flip to fallback (can_answer=false)",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "cit-010",
+    "suite": "citation-substring",
+    "role": "author",
+    "input": "{\"can_answer\":true,\"answer\":\"Submit via the portal.\",\"citations\":[{\"source_id\":\"KB9999999\",\"section_id\":\"some-section\",\"quote\":\"Any valid text.\"}]}",
+    "expected_behavior": "strip",
+    "notes": "Unknown source_id KB9999999; validator strips citation and flips to fallback",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "cit-011",
+    "suite": "citation-substring",
+    "role": "consumer",
+    "input": "{\"can_answer\":true,\"answer\":\"Contact the team.\",\"citations\":[{\"source_id\":\"KB0022991\",\"section_id\":\"nonexistent-section\",\"quote\":\"Any quote here.\"}]}",
+    "expected_behavior": "strip",
+    "notes": "Known source but unknown section_id; validator strips and flips to fallback",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "synthetic"
+  },
+  {
+    "id": "cit-012",
+    "suite": "citation-substring",
+    "role": "consumer",
+    "input": "{\"can_answer\":true,\"answer\":\"Flag the article using the button.\",\"citations\":[{\"source_id\":\"KB0022991\",\"section_id\":\"flagging-articles\",\"quote\":\"Any  user  with  read  access  can  flag  an  article.\"}]}",
+    "expected_behavior": "pass",
+    "notes": "Whitespace-variation test: doubled spaces in quote — validator normalises whitespace before matching so this still passes",
+    "added_by": "system",
+    "added_date": "2026-04-24",
+    "source": "KB0022991"
+  }
+]
