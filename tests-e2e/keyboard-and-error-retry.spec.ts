@@ -41,9 +41,11 @@ test.describe('SC #4 — Keyboard + error + retry', () => {
     expect(val).toContain('\n')
     expect(val).toContain('second line')
 
-    // Enter alone should submit and produce an answer
+    // Enter alone should submit and produce an answer.
+    // Use .first() — source panel may load KB content that also contains
+    // "flag an article"; the answer bubble is always the first match.
     await page.keyboard.press('Enter')
-    await expect(page.getByText(/flag an article/i)).toBeVisible()
+    await expect(page.getByText(/flag an article/i).first()).toBeVisible()
   })
 
   test('Server 5xx → ErrorCard with Retry → successful retry', async ({
@@ -81,8 +83,10 @@ test.describe('SC #4 — Keyboard + error + retry', () => {
     await expect(page.getByText(/Request ID:/i)).toBeVisible()
 
     // Click Retry — second mock returns happy path
+    // Use .first() — source panel may load KB content that also contains
+    // "flag an article"; the answer bubble is always the first match.
     await retry.click()
-    await expect(page.getByText(/flag an article/i)).toBeVisible()
+    await expect(page.getByText(/flag an article/i).first()).toBeVisible()
 
     // User question appears exactly ONCE (no duplicate on retry — CHAT-07)
     await expect(page.getByText('What is happening?')).toHaveCount(1)
