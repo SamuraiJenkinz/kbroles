@@ -9,9 +9,9 @@ Requirements for initial pilot release. Each maps to a roadmap phase (see Tracea
 
 ### Authentication & Session (AUTH)
 
-- [ ] **AUTH-01**: Entra ID / Azure AD SSO gates entry before the role-select screen
+- [x] **AUTH-01**: Entra ID / Azure AD SSO gates entry before the role-select screen
 - [ ] **AUTH-02**: Conversation state is session-only (in-memory per tab); nothing persisted server-side
-- [ ] **AUTH-03**: SSO token flow works in both standalone web and Microsoft Teams tab contexts via Nested App Authentication (NAA)
+- [ ] **AUTH-03**: SSO token flow works in both standalone web and Microsoft Teams tab contexts via Nested App Authentication (NAA) *(deferred to v1.1 per Phase 5.1 pivot)*
 
 ### Role Experience (ROLE)
 
@@ -87,10 +87,10 @@ Requirements for initial pilot release. Each maps to a roadmap phase (see Tracea
 
 ### Delivery & Hosting (DELV)
 
-- [ ] **DELV-01**: Deployed to MMC-sanctioned Azure App Service (Linux, Node 20.9+)
-- [ ] **DELV-02**: Standalone web app reachable via an MMC corporate URL with Entra ID SSO
-- [ ] **DELV-03**: Microsoft Teams tab package (schema 1.22 manifest with `webApplicationInfo.nestedAppAuthInfo` + `brk-multihub://` redirect URI) sharing the web codebase
-- [ ] **DELV-04**: CI/CD pipeline (GitHub Actions or Azure DevOps) deploying from the main branch
+- [x] **DELV-01**: ~~Deployed to MMC-sanctioned Azure App Service (Linux, Node 20.9+)~~ Reassigned Phase 5.1 → on-prem Windows Server (IIS reverse proxy + Windows Scheduled Task + AWS Secrets Manager)
+- [x] **DELV-02**: Standalone web app reachable via an MMC corporate URL with Entra ID SSO
+- [ ] **DELV-03**: Microsoft Teams tab package (schema 1.22 manifest with `webApplicationInfo.nestedAppAuthInfo` + `brk-multihub://` redirect URI) sharing the web codebase *(deferred to v1.1 per Phase 5.1 pivot)*
+- [x] **DELV-04**: CI/CD pipeline (GitHub Actions or Azure DevOps) deploying from the main branch
 
 ---
 
@@ -180,9 +180,9 @@ Each v1 requirement maps to exactly one phase.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUTH-01 | Phase 5 | Pending |
+| AUTH-01 | Phase 5.1 | Complete |
 | AUTH-02 | Phase 3 | Complete |
-| AUTH-03 | Phase 5 | Pending |
+| AUTH-03 | Phase 5 | Deferred to v1.1 |
 | ROLE-01 | Phase 3 | Complete |
 | ROLE-02 | Phase 3 | Complete |
 | ROLE-03 | Phase 3 | Complete |
@@ -225,10 +225,10 @@ Each v1 requirement maps to exactly one phase.
 | TELE-04 | Phase 6 | Pending |
 | CORP-01 | Phase 1 | Complete |
 | CORP-02 | Phase 2 | Complete |
-| DELV-01 | Phase 5 | Pending |
-| DELV-02 | Phase 5 | Pending |
-| DELV-03 | Phase 5 | Pending |
-| DELV-04 | Phase 5 | Pending |
+| DELV-01 | Phase 5.1 | Complete |
+| DELV-02 | Phase 5.1 | Complete |
+| DELV-03 | Phase 5 | Deferred to v1.1 |
+| DELV-04 | Phase 5.1 | Complete |
 
 **Coverage:**
 - v1 requirements: 49 total

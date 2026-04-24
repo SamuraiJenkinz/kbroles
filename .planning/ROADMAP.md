@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Role Experience & Chat UI** — Role select, role-aware chat, input, messages, feedback, and utility actions
 - [x] **Phase 4: Source Panel, Trust & Fallback UI** — Source panel, colour coding, freshness, about-tooltip, distinct fallback UI, flag-a-gap
 - [ ] **Phase 5: SSO & Teams Delivery** — NAA client auth, Teams manifest, App Service deployment, CI/CD (paused — pivoted to 5.1)
-- [ ] **Phase 5.1: MMC-IT BFF pivot (xmcp pattern)** (INSERTED) — Server-side Entra auth + iron-session + on-prem Windows deploy
+- [x] **Phase 5.1: MMC-IT BFF pivot (xmcp pattern)** (INSERTED) — Server-side Entra auth + iron-session + on-prem Windows deploy
 - [ ] **Phase 6: Telemetry, Evals & Pilot Hardening** — App Insights schema, eval suite hardening, rejected-article pull, pilot prep
 
 ## Phase Details
