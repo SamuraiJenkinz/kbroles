@@ -14,7 +14,8 @@
     "smoke": "node --env-file-if-exists=.env.local --import tsx scripts/phase0-smoke.ts",
     "test:e2e": "playwright test",
     "eval": "vitest run --config vitest.eval.config.ts",
-    "eval:fast": "vitest run --config vitest.eval.config.ts src/evals/suites/entity-allowlist.eval.ts src/evals/suites/citation-substring.eval.ts"
+    "eval:fast": "vitest run --config vitest.eval.config.ts src/evals/suites/entity-allowlist.eval.ts src/evals/suites/citation-substring.eval.ts",
+    "eval:slow": "vitest run --config vitest.eval.config.ts src/evals/suites/negative-oos.eval.ts src/evals/suites/paired-role.eval.ts src/evals/suites/injection-refuse.eval.ts src/evals/suites/positional.eval.ts src/evals/suites/_postRun.eval.ts"
   },
   "dependencies": {
     "@aws-sdk/client-secrets-manager": "^3.1036.0",
