@@ -95,6 +95,6 @@ CI runs `eval:fast` as a hard PR gate (ci.yml). Nightly cron runs `eval:slow` an
 
 ## Project Status
 
-**v1 Pilot Release** shipped 2026-04-24 (tag `v1`). Code-complete; 16 operator actions pending before pilot day 1 (see [`docs/admin-guide.md`](docs/admin-guide.md) §Day-0 setup or the milestone audit's `pending_operator_actions` frontmatter).
+**v1 Pilot Release** shipped 2026-04-24 (tag `v1`). Code-complete; live-environment rollout is tracked in [`DEPLOY-CHECKLIST.md`](DEPLOY-CHECKLIST.md) (9 hard blockers + 9 soft blockers + 4 pilot-launch items + 4 operational items).
 
 **Deferred to v1.1:** Microsoft Teams tab (AUTH-03 + DELV-03) at Phase 5.1 pivot decision.
