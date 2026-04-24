@@ -43,9 +43,7 @@ pnpm dev
 
 In local dev, Entra is stubbed (defaults `dev-only-do-not-use-in-prod` in `src/config/env.ts`). The middleware permits requests without a session when `NODE_ENV !== 'production'`, so you can use the app end-to-end without real Entra credentials.
 
-For Entra wiring, MGTI ingress, AWS Secrets Manager, and IIS reverse proxy setup, see [`docs/deploy-windows.md`](docs/deploy-windows.md).
-
-> **Note:** `.env.example` is partially stale (contains pre-pivot `NEXT_PUBLIC_ENTRA_*` keys that are no longer read by any code). `src/config/env.ts` is the authoritative env schema.
+For Entra wiring, MGTI ingress, AWS Secrets Manager, and IIS reverse proxy setup, see [`docs/deploy-windows.md`](docs/deploy-windows.md). Authoritative env schema is `src/config/env.ts`.
 
 ---
 
