@@ -311,7 +311,8 @@ Output: `src/evals/runner/judge.ts` (best-of-3) + `flakeQuarantine.ts` (run-to-r
 
 <verification>
 - `LLM_JUDGE_API_KEY=<test> pnpm eval` runs all 6 suites and writes a complete `ops/evals/latest.json` with `all_thresholds_met: true` when fixtures pass.
-- Nightly cost math: 4 suites × ~10-12 fixtures each × 3 votes = ~120 judge calls/run × ~$0.0001/call (gpt-4o-mini) = ~$0.012/run. Monthly: 30 × $0.012 ≈ $0.36. Well under the $180/mo budget target — room to grow fixtures.
+- **Judge model departure from CONTEXT.md:** CONTEXT.md §Cost budget assumed gpt-4o at ~$0.01/call → ~$6/night → ~$180/mo. This plan changes the default to gpt-4o-mini (authorized under CONTEXT's "Claude's discretion — judge model choice"). Rationale: gpt-4o-mini is sufficient for the yes/no entailment + refusal + allowlist judgments these suites perform, and is ~100x cheaper. Override to gpt-4o via `LLM_JUDGE_MODEL=gpt-4o` if pilot data shows judge disagreement above the flake threshold.
+- Nightly cost math (gpt-4o-mini default): 4 suites × ~10-12 fixtures each × 3 votes = ~120 judge calls/run × ~$0.0001/call = ~$0.012/run. Monthly: 30 × $0.012 ≈ $0.36. Well under the $180/mo CONTEXT budget — that budget now functions as a headroom ceiling rather than a target.
 - Positional suite: force a contrived turn-8 degradation (e.g. anchor_topic swapped with filler in one fixture) → delta spikes → suite fails, gate behaves correctly.
 - No LLM calls happen during `pnpm test` (grep: main test output contains no references to `src/evals/suites/` files).
 - `ops/evals/flaky-review.json` is written after 3 historical runs show variance (simulate with hand-crafted history files for the dev-time test).
