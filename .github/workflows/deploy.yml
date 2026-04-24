@@ -1,9 +1,17 @@
+# Phase 5.1 — two-job pipeline: ubuntu build → self-hosted Windows deploy.
+# Phase 6 Plan 06-06 added eval gating. See
+# .planning/phases/06-telemetry-evals-and-pilot-hardening/06-06-ci-cd-integration-PLAN.md
 name: Deploy to On-Prem Windows
 
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      skip_eval_gate:
+        description: 'Emergency bypass — skip 48h nightly-eval metadata gate'
+        type: boolean
+        default: false
 
 env:
   NODE_VERSION: '20.x'
@@ -36,6 +44,12 @@ jobs:
       - name: Test (unit)
         run: pnpm test
 
+      - name: Fast evals (deterministic hard gate)
+        run: pnpm eval:fast
+        # Required: fails the pipeline if entity-allowlist or citation-substring
+        # threshold is missed. No LLM_JUDGE_API_KEY needed — fast suites are
+        # deterministic string-match only. This is a HARD gate — no bypass.
+
       - name: Build (Next.js standalone)
         # Phase 5.1 — no build-time Entra/client-side auth secrets injected.
         # All auth is server-side (iron-session + msal-node) and reads env at
@@ -61,10 +75,46 @@ jobs:
           path: kbassistant-build.tar.gz
           retention-days: 3
 
+  check-evals:
+    name: Verify nightly eval is green (48h window)
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ inputs.skip_eval_gate != true }}
+    steps:
+      - name: Check for recent green nightly eval
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const cutoff = Date.now() - 48 * 60 * 60 * 1000
+            const runs = await github.rest.actions.listWorkflowRunsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'evals-nightly.yml',
+              per_page: 10,
+            })
+            const recentGreen = runs.data.workflow_runs.find(
+              r => r.conclusion === 'success' && new Date(r.updated_at).getTime() > cutoff
+            )
+            if (!recentGreen) {
+              core.setFailed(
+                'No green nightly eval run in the last 48h. Deploy blocked. ' +
+                'See docs/ops/eval-gate-bypass-procedure.md for emergency bypass.'
+              )
+              return
+            }
+            // Two-consecutive-red detection:
+            const recentRuns = runs.data.workflow_runs.slice(0, 2)
+            if (recentRuns.length === 2 && recentRuns.every(r => r.conclusion === 'failure')) {
+              core.setFailed(
+                'Last 2 nightly eval runs both red. Deploy blocked — ' +
+                'investigate before shipping.'
+              )
+            }
+
   deploy:
     name: Deploy to Windows box
     runs-on: [self-hosted, windows, kbassistant]
-    needs: build
+    needs: [build, check-evals]
     environment: production
     env:
       KBASSISTANT_DEPLOY_ROOT: ${{ vars.KBASSISTANT_DEPLOY_ROOT || 'D:\kbroles\.next\standalone' }}
