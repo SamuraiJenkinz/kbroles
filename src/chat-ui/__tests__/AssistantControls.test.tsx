@@ -5,6 +5,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AssistantControls } from '../AssistantControls'
 import type { Message } from '../types'
 
+// ─── Mock telemetryClient (Phase 6 Plan 03) ────────────────────────────────────
+// Hoisted so the mock factory runs before the import of AssistantControls.
+const sendFeedbackSpy = vi.fn().mockResolvedValue(undefined)
+vi.mock('@/lib/telemetryClient', () => ({
+  sendFeedback: (...args: unknown[]) => sendFeedbackSpy(...args),
+  sendClientEvent: vi.fn().mockResolvedValue(undefined),
+}))
+
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 const doneMessageWithCitation: Extract<Message, { kind: 'assistant' }> = {
@@ -44,6 +52,18 @@ const messageWithDownFeedback: Extract<Message, { kind: 'assistant' }> = {
   feedback: { kind: 'down', reason: 'hallucinated' },
 }
 
+// Fixture with message_id for telemetry tests.
+const MESSAGE_UUID = '00000000-0000-4000-8000-000000000099'
+const doneMessageWithId: Extract<Message, { kind: 'assistant' }> = {
+  kind: 'assistant',
+  id: 'a5',
+  state: 'done',
+  text: 'An answer.',
+  citations: [{ source_id: 'KB0022991', section_id: 'flagging-articles', quote: 'ok' }],
+  at: Date.now(),
+  message_id: MESSAGE_UUID,
+}
+
 // ─── Clipboard setup ─────────────────────────────────────────────────────────
 // user-event v14 calls attachClipboardStubToView during setup(), which replaces
 // navigator.clipboard on the jsdom window. We intercept it by creating our own
@@ -53,6 +73,10 @@ const messageWithDownFeedback: Extract<Message, { kind: 'assistant' }> = {
 function clickButton(element: HTMLElement) {
   element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
 }
+
+beforeEach(() => {
+  sendFeedbackSpy.mockClear()
+})
 
 describe('AssistantControls — copy + thumbs + feedback', () => {
   it('Copy with citation: UTIL-01 exact format "(Source: KB0022991 · Flagging Articles)"', async () => {
@@ -195,5 +219,49 @@ describe('AssistantControls — copy + thumbs + feedback', () => {
     expect(screen.getByRole('button', { name: /copy answer/i })).toBeVisible()
     expect(screen.getByRole('button', { name: 'Helpful' })).toBeVisible()
     expect(screen.getByRole('button', { name: 'Not helpful' })).toBeVisible()
+  })
+})
+
+// ─── Phase 6 Plan 03 — sendFeedback telemetry wiring ─────────────────────────
+
+describe('AssistantControls — sendFeedback telemetry (Phase 6 Plan 03)', () => {
+  it('thumbs-up calls sendFeedback with rating:up and message_id', async () => {
+    const user = userEvent.setup()
+    render(<AssistantControls message={doneMessageWithId} onFeedback={vi.fn()} />)
+    await user.click(screen.getByRole('button', { name: 'Helpful' }))
+    expect(sendFeedbackSpy).toHaveBeenCalledOnce()
+    const payload = sendFeedbackSpy.mock.calls[0][0] as { message_id: string; rating: string; citation_source_id: string; citation_section_id: string }
+    expect(payload.message_id).toBe(MESSAGE_UUID)
+    expect(payload.rating).toBe('up')
+    expect(payload.citation_source_id).toBe('KB0022991')
+    expect(payload.citation_section_id).toBe('flagging-articles')
+  })
+
+  it('thumbs-down + reason calls sendFeedback with rating:down and reason', async () => {
+    const user = userEvent.setup()
+    render(<AssistantControls message={doneMessageWithId} onFeedback={vi.fn()} />)
+    await user.click(screen.getByRole('button', { name: 'Not helpful' }))
+    await user.click(screen.getByRole('radio', { name: /wrong citation/i }))
+    expect(sendFeedbackSpy).toHaveBeenCalledOnce()
+    const payload = sendFeedbackSpy.mock.calls[0][0] as { rating: string; reason: string }
+    expect(payload.rating).toBe('down')
+    expect(payload.reason).toBe('wrong citation')
+  })
+
+  it('thumbs-down with NO reason selected does NOT call sendFeedback', async () => {
+    const user = userEvent.setup()
+    render(<AssistantControls message={doneMessageWithId} onFeedback={vi.fn()} />)
+    // Click thumbs-down — opens panel
+    await user.click(screen.getByRole('button', { name: 'Not helpful' }))
+    // Panel is open, no reason selected → sendFeedback NOT called
+    expect(sendFeedbackSpy).not.toHaveBeenCalled()
+  })
+
+  it('thumbs-up WITHOUT message_id does NOT call sendFeedback (no message_id guard)', async () => {
+    const user = userEvent.setup()
+    // Message without message_id (server message_id SSE not yet received)
+    render(<AssistantControls message={doneMessageNoCitation} onFeedback={vi.fn()} />)
+    await user.click(screen.getByRole('button', { name: 'Helpful' }))
+    expect(sendFeedbackSpy).not.toHaveBeenCalled()
   })
 })

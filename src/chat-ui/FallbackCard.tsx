@@ -5,6 +5,7 @@ import type { Message } from './types'
 import type { Role } from './types'
 import { buildFlagGapMailto } from './mailto'
 import { cn } from './cn'
+import { sendClientEvent } from '@/lib/telemetryClient'
 
 /**
  * Visually distinct fallback — NOT a styled Message.
@@ -27,11 +28,14 @@ export function FallbackCard({
   role,
   contentStewardEmail,
   userQuestion,
+  question_hash,
 }: {
   message: Extract<Message, { kind: 'assistant' }>
   role: Role
   contentStewardEmail: string
   userQuestion: string
+  /** Phase 6 Plan 03 — question_hash for flag_a_gap_action telemetry. */
+  question_hash?: string
 }) {
   const [flagged, setFlagged] = useState(false)
 
@@ -46,6 +50,14 @@ export function FallbackCard({
     // Let the browser's default mailto handler fire (no preventDefault).
     // onClick is purely for the UX state swap to the "Opened ✓" label.
     setFlagged(true)
+    // Phase 6 Plan 03 — emit flag_a_gap_action telemetry.
+    // message.message_id is the server-echoed UUID from the SSE message_id event.
+    // question_hash is passed down from ChatSurface / MessageList.
+    if (message.message_id) {
+      void sendClientEvent('flag_a_gap_action', message.message_id, {
+        ...(question_hash ? { question_hash } : {}),
+      })
+    }
   }
 
   return (

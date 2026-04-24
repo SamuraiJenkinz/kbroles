@@ -279,6 +279,12 @@ export async function POST(request: Request): Promise<Response> {
       let usage: { prompt_tokens: number; completion_tokens: number } | null = null
 
       try {
+        // Phase 6 Plan 03 — echo the server-generated message_id as the FIRST
+        // SSE frame so the client can capture it before answer_delta arrives.
+        // The client uses this UUID to correlate feedback/telemetry events
+        // (sendFeedback, sendClientEvent) with the same trackEvent() call.
+        await writer.write(encodeSse({ type: 'message_id', id: message_id }))
+
         const streamResult = await streamAnswer({
           client,
           systemPrompt,

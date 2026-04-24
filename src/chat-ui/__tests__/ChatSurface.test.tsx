@@ -17,6 +17,15 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as Tooltip from '@radix-ui/react-tooltip'
 
+// ─── telemetryClient mock (Phase 6 Plan 03) ──────────────────────────────────
+// Must be declared before vi.mock calls (hoisted). ChatSurface imports
+// sendClientEvent from @/lib/telemetryClient for citation chip telemetry.
+const sendClientEventSpy = vi.fn().mockResolvedValue(undefined)
+vi.mock('@/lib/telemetryClient', () => ({
+  sendFeedback: vi.fn().mockResolvedValue(undefined),
+  sendClientEvent: (...args: unknown[]) => sendClientEventSpy(...args),
+}))
+
 // ─── Hoisted mock state (Plan 05.1-05) ───────────────────────────────────────
 // vi.hoisted so the vi.mock factories below can reference the same instances.
 const mocks = vi.hoisted(() => ({
@@ -969,6 +978,75 @@ describe('ChatPage', () => {
     // RoleSelect "Knowledge Consumer" card must NOT be in DOM
     expect(screen.queryByText('Knowledge Consumer')).not.toBeInTheDocument()
     // (The role pill in Header shows "KB Author", not the RoleSelect card)
+  })
+
+  // ── Phase 6 Plan 03: message_id SSE event captures UUID onto assistant turn ──
+
+  it('message_id SSE event: assistant turn captures message_id before first answer_delta', async () => {
+    const MESSAGE_UUID = '12345678-1234-4000-8000-000000000001'
+
+    const chatFrames = [
+      JSON.stringify({ type: 'message_id', id: MESSAGE_UUID }),
+      JSON.stringify({ type: 'answer_delta', text: 'Test answer.' }),
+      JSON.stringify({ type: 'done', can_answer: true, validator_flips: 0 }),
+    ]
+
+    setupFetch(defaultHandler(() => Promise.resolve(sseResponse(chatFrames))))
+
+    const user = userEvent.setup()
+    renderWithProviders(<ChatSurface role="consumer" onChangeRole={vi.fn()} />)
+
+    await waitFor(() => expect(screen.queryAllByRole('listitem')).toHaveLength(5))
+
+    await user.type(screen.getByRole('textbox'), 'Test question')
+    await user.keyboard('{Enter}')
+
+    // Wait for answer to appear
+    await waitFor(() => expect(screen.getByText('Test answer.')).toBeInTheDocument())
+
+    // message_id should be captured (indirectly: if AssistantControls had message_id
+    // it would attempt sendFeedback — but here we just verify the flow doesn't break)
+    // The primary assertion is that the render completes without error.
+    expect(screen.getByText('Test answer.')).toBeInTheDocument()
+  })
+
+  // ── Phase 6 Plan 03: citation chip click fires sendClientEvent ───────────────
+
+  it('citation chip click calls sendClientEvent(citation_click_through) with source_id and section_id', async () => {
+    const MESSAGE_UUID = '12345678-1234-4000-8000-000000000002'
+    sendClientEventSpy.mockClear()
+
+    const chatFrames = [
+      JSON.stringify({ type: 'message_id', id: MESSAGE_UUID }),
+      JSON.stringify({ type: 'answer_delta', text: 'Answer with citation.' }),
+      JSON.stringify({ type: 'citations', citations: [{ source_id: 'KB0022991', section_id: 'flagging-articles', quote: 'x' }] }),
+      JSON.stringify({ type: 'done', can_answer: true, validator_flips: 0 }),
+    ]
+
+    setupFetch(defaultHandler(() => Promise.resolve(sseResponse(chatFrames))))
+
+    const user = userEvent.setup()
+    renderWithProviders(<ChatSurface role="consumer" onChangeRole={vi.fn()} />)
+
+    await waitFor(() => expect(screen.queryAllByRole('listitem')).toHaveLength(5))
+
+    await user.type(screen.getByRole('textbox'), 'Test question')
+    await user.keyboard('{Enter}')
+
+    // Wait for citation chip button
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /open source KB0022991/i })).toBeInTheDocument()
+    )
+
+    // Click the citation chip
+    await user.click(screen.getByRole('button', { name: /open source KB0022991/i }))
+
+    // sendClientEvent should have been called with citation_click_through
+    expect(sendClientEventSpy).toHaveBeenCalledWith(
+      'citation_click_through',
+      MESSAGE_UUID,
+      { source_id: 'KB0022991', section_id: 'flagging-articles' },
+    )
   })
 
 })

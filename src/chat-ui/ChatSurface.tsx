@@ -15,6 +15,7 @@ import { InputBar } from './InputBar'
 import { ChangeRoleDialog } from './ChangeRoleDialog'
 import { SourcePanel } from './SourcePanel'
 import { cn } from './cn'
+import { sendClientEvent } from '@/lib/telemetryClient'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -70,6 +71,11 @@ export function ChatSurface({
     const id = asstIdRef.current
     if (id === null) return  // race: event arrived after retry/clear wiped the bubble
     switch (ev.type) {
+      case 'message_id':
+        // Phase 6 Plan 03 — capture server-echoed message_id onto the turn.
+        // This UUID is emitted as the FIRST SSE frame before answer_delta.
+        dispatch({ type: 'assistant/message_id', id, message_id: ev.id })
+        break
       case 'answer_delta':
         dispatch({ type: 'assistant/delta', id, text: ev.text })
         break
@@ -187,6 +193,20 @@ export function ChatSurface({
     void performSignOut()
   }, [stop, clearDraft, onChangeRole, panel.resetSession, performSignOut])
 
+  // ── Citation chip click — opens panel + emits citation_click_through ─────
+  // Phase 6 Plan 03: augments panel.chipClick with a sendClientEvent call so
+  // every citation chip click is recorded in telemetry with the message_id
+  // that correlates to the server's trackEvent('citation_returned') event.
+  const handleChipClick = useCallback(
+    (source_id: string, section_id: string, message_id?: string) => {
+      panel.chipClick(source_id, section_id)
+      if (message_id) {
+        void sendClientEvent('citation_click_through', message_id, { source_id, section_id })
+      }
+    },
+    [panel],
+  )
+
   // ── Stop (inline stop button) ──────────────────────────────────────────────
   const handleStop = useCallback(() => {
     const id = state.inFlightId
@@ -277,7 +297,7 @@ export function ChatSurface({
               onCopy={() => { /* copy handled internally by AssistantControls */ }}
               onFeedback={handleFeedback}
               onRetry={handleRetry}   // consumes Plan 04's onRetry prop (no mutation)
-              onChipClick={panel.chipClick}
+              onChipClick={handleChipClick}
               activeSource={panel.loaded}
             />
           </div>

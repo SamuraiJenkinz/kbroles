@@ -5,10 +5,17 @@
  */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { FallbackCard } from '../FallbackCard'
 import type { Message } from '../types'
 import { FALLBACK_STRING } from '@/grounding/fallback'
+
+// ─── Mock telemetryClient (Phase 6 Plan 03) ────────────────────────────────────
+const sendClientEventSpy = vi.fn().mockResolvedValue(undefined)
+vi.mock('@/lib/telemetryClient', () => ({
+  sendFeedback: vi.fn().mockResolvedValue(undefined),
+  sendClientEvent: (...args: unknown[]) => sendClientEventSpy(...args),
+}))
 
 // ─── Fixture ──────────────────────────────────────────────────────────────────
 
@@ -178,5 +185,53 @@ describe('FallbackCard — requestId plumbing in mailto href', () => {
     const href = link.getAttribute('href') ?? ''
     const decoded = decodeURIComponent(href)
     expect(decoded).toContain('Request ID: unknown')
+  })
+})
+
+// ─── Phase 6 Plan 03 — flag_a_gap_action telemetry ────────────────────────────
+
+const MESSAGE_UUID = '00000000-0000-4000-8000-000000000011'
+
+describe('FallbackCard — flag_a_gap_action telemetry (Phase 6 Plan 03)', () => {
+  beforeEach(() => {
+    sendClientEventSpy.mockClear()
+  })
+
+  it('clicking "Flag a gap" calls sendClientEvent(flag_a_gap_action) with message_id and question_hash', async () => {
+    const user = userEvent.setup()
+    const message = makeFallbackMessage({ message_id: MESSAGE_UUID })
+
+    // Prevent mailto navigation in jsdom
+    render(
+      <FallbackCard
+        {...DEFAULT_PROPS}
+        message={message}
+        question_hash="abc123def456789a"
+      />,
+    )
+
+    // Intercept href navigation to prevent jsdom from following it
+    const link = screen.getByRole('link', { name: /flag this gap/i })
+    link.addEventListener('click', (e) => e.preventDefault())
+    await user.click(link)
+
+    expect(sendClientEventSpy).toHaveBeenCalledOnce()
+    const [eventName, msgId, dims] = sendClientEventSpy.mock.calls[0] as [string, string, Record<string, string>]
+    expect(eventName).toBe('flag_a_gap_action')
+    expect(msgId).toBe(MESSAGE_UUID)
+    expect(dims.question_hash).toBe('abc123def456789a')
+  })
+
+  it('does NOT call sendClientEvent when message has no message_id', async () => {
+    const user = userEvent.setup()
+    const message = makeFallbackMessage({ message_id: undefined })
+
+    render(<FallbackCard {...DEFAULT_PROPS} message={message} question_hash="hash123" />)
+
+    const link = screen.getByRole('link', { name: /flag this gap/i })
+    link.addEventListener('click', (e) => e.preventDefault())
+    await user.click(link)
+
+    expect(sendClientEventSpy).not.toHaveBeenCalled()
   })
 })

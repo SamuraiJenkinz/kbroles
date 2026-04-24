@@ -35,7 +35,8 @@ export function Message({
   onCopy?: (id: string) => void
   onFeedback?: (id: string, next: Feedback | null) => void
   onRetry?: (id: string) => void
-  onChipClick?: (source_id: string, section_id: string) => void
+  // Phase 6 Plan 03: third arg is the message_id for telemetry correlation.
+  onChipClick?: (source_id: string, section_id: string, message_id?: string) => void
   activeSource?: { source_id: string; section_id: string } | null
 }) {
   if (message.kind === 'user') {
@@ -97,7 +98,7 @@ export function Message({
                   <button
                     key={`${cit.source_id}-${cit.section_id}`}
                     type="button"
-                    onClick={() => onChipClick?.(cit.source_id, cit.section_id)}
+                    onClick={() => onChipClick?.(cit.source_id, cit.section_id, message.kind === 'assistant' ? message.message_id : undefined)}
                     aria-label={`Open source ${cit.source_id} — ${badge.label}`}
                     className={cn(
                       'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors',

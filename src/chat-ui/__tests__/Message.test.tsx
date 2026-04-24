@@ -113,7 +113,8 @@ describe('Message — citation chip upgrades (Phase 4)', () => {
     await user.click(screen.getByRole('button', { name: /open source KB0020882/i }))
 
     expect(onChipClick).toHaveBeenCalledTimes(1)
-    expect(onChipClick).toHaveBeenCalledWith('KB0020882', 'resolution-field-software')
+    // Phase 6 Plan 03: third arg is message_id (undefined here — no message_id on this fixture).
+    expect(onChipClick).toHaveBeenCalledWith('KB0020882', 'resolution-field-software', undefined)
   })
 
   // Test 5: Active chip (matches activeSource) has ring-2 class

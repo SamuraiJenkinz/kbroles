@@ -39,6 +39,9 @@ export type SseEvent =
   | { type: 'fallback'; reason: FallbackReason; text: string }
   | { type: 'done'; can_answer: boolean; validator_flips: number }
   | { type: 'error'; code: ErrorCode; message: string }
+  // Phase 6 Plan 03 — server echoes message_id so client can correlate
+  // feedback/telemetry events with the same UUID used in trackEvent().
+  | { type: 'message_id'; id: string }
 
 // Module-level TextEncoder — allocated once per process, reused across every
 // encodeSse() call. Per-call allocation would be wasteful on a streaming hot

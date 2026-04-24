@@ -22,7 +22,8 @@ export function MessageList({
   onCopy?: (id: string) => void
   onFeedback?: (id: string, next: Feedback | null) => void
   onRetry?: (id: string) => void
-  onChipClick?: (source_id: string, section_id: string) => void
+  // Phase 6 Plan 03: third arg is message_id for telemetry correlation.
+  onChipClick?: (source_id: string, section_id: string, message_id?: string) => void
   activeSource?: { source_id: string; section_id: string } | null
 }) {
   if (messages.length === 0) return null
@@ -43,6 +44,7 @@ export function MessageList({
               role={role}
               contentStewardEmail={contentStewardEmail}
               userQuestion={userQuestion}
+              question_hash={m.kind === 'assistant' ? m.question_hash : undefined}
             />
           )
         }

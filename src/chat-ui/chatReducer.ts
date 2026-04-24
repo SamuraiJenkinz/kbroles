@@ -145,6 +145,29 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     }
 
     /**
+     * assistant/message_id — capture server-echoed message_id onto the turn.
+     * Phase 6 Plan 03: emitted by /api/chat immediately after chat_request_started
+     * so the client can use the SAME UUID for feedback/telemetry correlation.
+     */
+    case 'assistant/message_id': {
+      return updateMessage(state, action.id, m => {
+        if (m.kind !== 'assistant') return m
+        return { ...m, message_id: action.message_id }
+      })
+    }
+
+    /**
+     * assistant/question_hash — capture question_hash onto the turn.
+     * Used by FallbackCard for flag_a_gap_action telemetry.
+     */
+    case 'assistant/question_hash': {
+      return updateMessage(state, action.id, m => {
+        if (m.kind !== 'assistant') return m
+        return { ...m, question_hash: action.question_hash }
+      })
+    }
+
+    /**
      * assistant/retry — REMOVE the targeted assistant bubble.
      * Caller (Plan 05 wiring) re-dispatches user/send → assistant/start.
      * Clear inFlightId if it matched the removed bubble.

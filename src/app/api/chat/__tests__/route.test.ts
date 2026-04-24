@@ -138,6 +138,8 @@ type SseFrame =
   | { type: 'fallback'; reason: string; text: string }
   | { type: 'done'; can_answer: boolean; validator_flips: number }
   | { type: 'error'; code: string; message: string }
+  // Phase 6 Plan 03 — server echoes message_id before answer_delta.
+  | { type: 'message_id'; id: string }
 
 async function readAllSseFrames(res: Response): Promise<SseFrame[]> {
   const body = res.body
@@ -251,13 +253,18 @@ describe('POST /api/chat — happy path (Phase 2 SC #1)', () => {
     expect(rid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
 
     const frames = await readAllSseFrames(res)
-    // Exactly 3 frames in LOCKED order per 02-CONTEXT.md §1 event ordering.
-    expect(frames.map(f => f.type)).toEqual(['answer_delta', 'citations', 'done'])
-    expect((frames[0] as { text: string }).text).toBe(
+    // Phase 6 Plan 03: message_id frame is emitted FIRST before answer_delta.
+    // Frame order: message_id → answer_delta → citations → done (4 frames total).
+    expect(frames.map(f => f.type)).toEqual(['message_id', 'answer_delta', 'citations', 'done'])
+    // message_id is a valid UUID
+    expect((frames[0] as { id: string }).id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    )
+    expect((frames[1] as { text: string }).text).toBe(
       'You can flag an article by raising a correction request.',
     )
-    expect((frames[2] as { validator_flips: number }).validator_flips).toBe(0)
-    expect((frames[2] as { can_answer: boolean }).can_answer).toBe(true)
+    expect((frames[3] as { validator_flips: number }).validator_flips).toBe(0)
+    expect((frames[3] as { can_answer: boolean }).can_answer).toBe(true)
   })
 })
 
