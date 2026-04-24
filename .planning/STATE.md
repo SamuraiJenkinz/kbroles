@@ -52,7 +52,9 @@ See: .planning/ROADMAP.md (6 phases, standard depth)
 ## Current Position
 
 Phase: 6 of 6 (Telemetry, Evals & Pilot Hardening) — In progress
-Plan: 1 of 8 (telemetry-foundation) — COMPLETE 2026-04-24
+Plan: 4 of 8 (eval-harness-and-fast-suites) — COMPLETE 2026-04-24
+
+**Phase 6 Plan 04 summary:** `pnpm eval:fast` in 556ms; `src/evals/runner/{types,thresholds,fixtures,report}.ts` + 15 unit tests; `vitest.eval.config.ts` separate from main config (maxWorkers=1 for sequential merge); `vitest.config.mts` excludes `src/evals/suites/**/*.eval.ts` (RESEARCH Pitfall 5); `package.json` adds `eval` + `eval:fast` scripts; 8 entity-allowlist fixtures + 12 citation-substring fixtures (verbatim quotes from KB0022991/KB0020882/SNOW_FORM); both fast suites call Phase 1/2 guards directly; `ops/evals/latest.json` has both SuiteReports with `all_thresholds_met: true`; 622/622 unit tests + 19/19 E2E green. Rule-1 auto-fixes: cit-002 quote had `**bold**` markdown markers (fixed to use clean sentence); concurrent write race in `mergeAndWriteReport` fixed by `maxWorkers=1`.
 
 **Phase 6 Plan 01 summary:** `@azure/monitor-opentelemetry@^1.16.0` + `@opentelemetry/api@^1.9.1` installed; `src/instrumentation.ts` → `src/instrumentation.node.ts` bootstrap wired (loadSecrets → useAzureMonitor, graceful fallback when connection string absent); `src/obs/telemetry.ts` ships synchronous `trackEvent(name, dims, meas)` as the single OTel+pino dual-emit choke point; `SECRET_KEYS` extended to 8 entries (APPLICATIONINSIGHTS_CONNECTION_STRING + QUESTION_HASH_SALT); `EnvSchema` extended; 10 Vitest assertions added; test baseline 622/622 (prior 597 + 10 new); `pnpm build` clean. Rule-3 auto-fixes: vi.hoisted() for Vitest mock hoisting + double-cast for mock.calls TypeScript.
 
@@ -69,7 +71,9 @@ Status (Phase 5, historical, paused): Plan 05-04 landed the client-side auth run
 
 **Plan 05-01 (prior)** — Plan 05-01 COMPLETE. Deps (@azure/msal-browser@5.8.0, @azure/msal-react@5.3.1, @microsoft/teams-js@2.52.0, jose@6.2.2, mock-jwks@3.3.5). `.npmrc node-linker=hoisted`. EnvSchema +ENTRA_*. `src/auth/{detectHost,msalConfig,msalInstance}.ts` shipped.
 
-Last activity: 2026-04-24 — Phase 6 Plan 01 (telemetry-foundation) COMPLETE. Commits: 5261640 (feat: SDK + secrets + instrumentation) / 7170a81 (feat: trackEvent + tests) + pending metadata commit. Test baseline updated to 622/622. Decisions: OTel distro over classic SDK, dual-emit over pino-transport, synchronous trackEvent(), graceful fallback on absent connection string.
+Last activity: 2026-04-24 — Phase 6 Plan 04 (eval-harness-and-fast-suites) COMPLETE. Commits: efefd9b (feat: eval harness runner) / 3df5e9d (test: fast suites entity-allowlist + citation-substring) + pending metadata commit. Test baseline 622/622; pnpm eval:fast 556ms. Decisions: bespoke Vitest runner over promptfoo, ops/evals/latest.json as CI artifact contract, maxWorkers=1 for sequential merge.
+
+Previous: 2026-04-24 — Phase 6 Plan 01 (telemetry-foundation) COMPLETE. Commits: 5261640 (feat: SDK + secrets + instrumentation) / 7170a81 (feat: trackEvent + tests) + pending metadata commit. Test baseline updated to 622/622. Decisions: OTel distro over classic SDK, dual-emit over pino-transport, synchronous trackEvent(), graceful fallback on absent connection string.
 
 Previous: 2026-04-24 — Phase 5.1 (MMC-IT BFF pivot) COMPLETE + verifier passed + user-approved (human-deploy items tracked as pending-operator-execution). 8 plans × 5 waves × 27 plan/metadata commits + 1 orchestrator lockfile correction (018ba84). Final heads: Wave 1 — d27e249 / e52edb6 / 6ee4f03 / e54dcb6 / a96f804 / f0df9ff; Wave 2 — de258b8 / f8b70c1 / c39091d / b1c071d / adea02a / 9df2387; Wave 3 — 7dabefb / 9346350 / e5aa645; Wave 4 — 561f246 / c357d02 / cad7dbf / 5dc6cfe / 2e09cfc / d0facb4 / 86fcbb5 / 018ba84; Wave 5 — 4d7de2a / 651a8d7 / c7dff73 / 42ecdc0. Phase verification: 05.1-VERIFICATION.md.
 
