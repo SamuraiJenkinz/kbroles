@@ -115,6 +115,7 @@ jobs:
     name: Deploy to Windows box
     runs-on: [self-hosted, windows, kbassistant]
     needs: [build, check-evals]
+    if: always() && needs.build.result == 'success' && (needs.check-evals.result == 'success' || needs.check-evals.result == 'skipped')
     environment: production
     env:
       KBASSISTANT_DEPLOY_ROOT: ${{ vars.KBASSISTANT_DEPLOY_ROOT || 'D:\kbroles\.next\standalone' }}
