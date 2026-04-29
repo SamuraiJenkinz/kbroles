@@ -4,7 +4,8 @@
 
 **Background reading before starting:**
 - [`docs/admin-guide.md`](docs/admin-guide.md) — orientation map (owners, cadence, escalation)
-- [`docs/deploy-windows.md`](docs/deploy-windows.md) — Windows Server deploy runbook
+- [`docs/deploy-windows.md`](docs/deploy-windows.md) — Windows Server deploy runbook (default: AWS Secrets Manager path)
+  - [`docs/deploy-windows.md` §4.2 (alternative)](docs/deploy-windows.md) — no-AWS env-file-on-disk path; supporting files: `.env.production.example` (template), `scripts/start.ps1` (launcher). Use this if the pilot box has no AWS CLI access.
 - [`docs/entra-app-registration-setup.md`](docs/entra-app-registration-setup.md) — Entra setup runbook
 - [`.planning/milestones/v1-MILESTONE-AUDIT.md`](.planning/milestones/v1-MILESTONE-AUDIT.md) — source list of pending operator actions (frontmatter `pending_operator_actions`)
 
@@ -69,9 +70,13 @@ Without these, `.github/workflows/deploy.yml` either fails immediately (no runne
   - **Done when:** `gh secret list` shows all 7 names
   - **Notes:**
 
-### AWS Secrets Manager
+### Secrets store
 
-- [ ] **HB-6** AWS Secrets Manager secret `/mmc/cts/kb-assistant` provisioned in `us-east-1` with 7 keys:
+- [ ] **HB-6** Secrets store provisioned (EITHER AWS Secrets Manager OR env-file-on-disk)
+  - **Owner:** Ops
+
+  **Recommended path — AWS Secrets Manager:**
+  Provision secret `/mmc/cts/kb-assistant` in `us-east-1` with 7 keys:
   - `ENTRA_CLIENT_SECRET` (from Entra — see HB-8)
   - `SESSION_SECRET` (32+ random bytes; `openssl rand -base64 48` works)
   - `QUESTION_HASH_SALT` (random, pre-register rotation cadence)
@@ -79,13 +84,21 @@ Without these, `.github/workflows/deploy.yml` either fails immediately (no runne
   - `TEAMS_WEBHOOK_URL` (same value as HB-5's GHA secret)
   - `SERVICENOW_SERVICE_ACCOUNT` (read-only SN creds — Basic auth `user:password`)
   - `SN_INSTANCE` (e.g. `mmcnow.service-now.com`)
-  - **Owner:** Ops
   - **How:** `docs/env-handling.md` + `docs/entra-app-registration-setup.md` §6 (`aws secretsmanager create-secret`)
-  - **Done when:** `aws secretsmanager get-secret-value --secret-id /mmc/cts/kb-assistant --region us-east-1` returns a JSON blob with all 7 keys
+
+  **OR (alternative for no-AWS pilots) — env-file-on-disk:**
+  - Follow `docs/deploy-windows.md` §4.2 (alternative) for full instructions.
+  - Copy `.env.production.example` from the repo root, fill in all 11 keys, place at `D:\kbroles\.env.production` on the Windows box.
+  - Lock down ACL to the service account (`icacls D:\kbroles\.env.production /inheritance:r /grant:r "<svcAcct>:R"`).
+  - Use `scripts/start.ps1` as the Scheduled Task launcher (reads the env file, then starts Node with logging — see HB-3).
+  - Do NOT set `AWS_SECRET_NAME` or `AWS_REGION` as machine-scope env vars — their absence is what activates the env-file path in `loadSecrets()`.
+
+  - **Done when:** EITHER `aws secretsmanager get-secret-value --secret-id /mmc/cts/kb-assistant --region us-east-1` returns a JSON blob with all 7 keys, OR `D:\kbroles\.env.production` exists on the Windows box with all 11 keys populated and ACL'd to the service account per `docs/deploy-windows.md` §4.2 (alternative).
   - **Notes:**
 
-- [ ] **HB-7** Windows Server IAM credentials configured (AWS SDK credential chain finds them)
+- [ ] **HB-7** *(optional — skip if using HB-6 env-file alternative)* Windows Server IAM credentials configured (AWS SDK credential chain finds them)
   - **Owner:** Ops
+  > If using the env-file-on-disk path (HB-6 alternative), this item can be skipped. The Scheduled Task launches via `scripts/start.ps1` which doesn't reach AWS at runtime.
   - **How:** `docs/deploy-windows.md` §2 (either IAM role via instance profile, or `C:\Users\<SvcAccount>\.aws\credentials` + `config`)
   - **Done when:** `aws sts get-caller-identity --region us-east-1` works on the Windows box as the service account the Scheduled Task runs as
   - **Notes:**
@@ -108,7 +121,7 @@ Without these, `.github/workflows/deploy.yml` either fails immediately (no runne
 - [ ] **HB-9** MGTI ingress key + URL + CA bundle obtained
   - **Owner:** Ops (coordinates with MMC platform team)
   - **How:** MMC platform team provides `LLM_API_KEY` + confirms `LLM_BASE_URL` + provides corporate CA bundle for `NODE_EXTRA_CA_CERTS`
-  - **Done when:** Values recorded in AWS Secrets Manager (`LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`) and the CA bundle file is on the Windows box with `NODE_EXTRA_CA_CERTS` set as machine-scope env var (the Scheduled Task reads it at start — NOT from .env)
+  - **Done when:** Values recorded in EITHER AWS Secrets Manager OR `D:\kbroles\.env.production` (`LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`) AND the CA bundle file is on the Windows box with `NODE_EXTRA_CA_CERTS` set as machine-scope env var (the Scheduled Task reads it at start — NOT from .env, regardless of which secrets path you chose, see `docs/env-handling.md` §3)
   - **Notes:**
 
 ---
