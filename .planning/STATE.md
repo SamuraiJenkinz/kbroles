@@ -76,6 +76,14 @@ Full log in PROJECT.md Key Decisions table. All v1 decisions marked ✓ Good, �
 
 - `C:\Users\taylo\.claude\projects\C--kbroles\memory\mmc_it_entra_pattern.md` — xmcp/Atlas pattern reference for future MMC-internal app work (BFF + auth code flow + App Roles + on-prem Windows + AWS Secrets Manager)
 
+### Quick Tasks Completed
+
+Pre-pilot tactical fixes between v1 ship and v1.1 scope. Each row is a self-contained operator-unblocking change committed atomically; full detail in the linked SUMMARY.md.
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 001 | Env-file-on-disk deploy path (no-AWS alternative): start.ps1 wrapper + .env.production.example template + loadSecrets() early-return guard + docs cross-linking. Operator without AWS CLI access can now run pilot via `D:\kbroles\.env.production` + Scheduled Task → `scripts/start.ps1`. 729/729 unit tests green. | 2026-04-29 | 33e6d77 | [001-add-no-aws-env-file-deploy-path](./quick/001-add-no-aws-env-file-deploy-path/) |
+
 ---
 
-*Last activity: 2026-04-24 — v1 Pilot Release shipped + archived. Milestone v1 complete. Ready for `/gsd:new-milestone` to scope v1.1.*
+*Last activity: 2026-04-29 — Quick task 001 (no-AWS env-file deploy path) shipped. Placeholder ROADMAP.md created to bridge the between-milestones state until `/gsd:new-milestone` runs for v1.1.*
