@@ -43,7 +43,17 @@ let _cache: Record<string, string> | null = null
 export async function loadSecrets(): Promise<Record<string, string>> {
   if (_cache) return _cache
 
-  const secretName = process.env.AWS_SECRET_NAME ?? '/mmc/cts/kb-assistant'
+  // No-AWS deploy path: when AWS_SECRET_NAME is unset, callers rely on
+  // process.env populated by scripts/start.ps1 reading D:\kbroles\.env.production.
+  // Short-circuit BEFORE the dynamic AWS SDK import + the catch-and-log path
+  // to avoid a noisy info log on every cold start.
+  // See: docs/deploy-windows.md Step 4.2 (alternative).
+  if (!process.env.AWS_SECRET_NAME) {
+    _cache = {}
+    return _cache
+  }
+
+  const secretName = process.env.AWS_SECRET_NAME! // guarded above
   const region = process.env.AWS_REGION ?? 'us-east-1'
 
   try {

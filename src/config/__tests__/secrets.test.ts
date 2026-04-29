@@ -69,6 +69,9 @@ describe('loadSecrets', () => {
       envSnapshot.set(key, process.env[key])
       delete process.env[key]
     }
+    // Default AWS path: set AWS_SECRET_NAME so the early-return guard is NOT
+    // triggered in AWS-path tests. The no-AWS test deletes it explicitly.
+    process.env.AWS_SECRET_NAME = '/mmc/cts/kb-assistant'
   })
 
   afterEach(() => {
@@ -177,5 +180,23 @@ describe('loadSecrets', () => {
     const result = await loadSecrets()
 
     expect(result).toEqual({})
+  })
+
+  it('returns {} without importing AWS SDK when AWS_SECRET_NAME is unset', async () => {
+    __resetSecretsCacheForTests()
+    delete process.env.AWS_SECRET_NAME
+
+    // Spy on console.info — the early-return path must NOT log.
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+    const result = await loadSecrets()
+
+    expect(result).toEqual({})
+    // The early-return guard fires before the try/catch, so no info log.
+    expect(infoSpy).not.toHaveBeenCalled()
+    // The early-return fires before the SDK dynamic import, so send() is never called.
+    expect(sendCallCount).toBe(0)
+
+    infoSpy.mockRestore()
   })
 })
