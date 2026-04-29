@@ -155,6 +155,8 @@ APP_BASE_URL=http://localhost:3000
 
 **Secret rotation:** update the JSON blob in AWS Secrets Manager (`aws secretsmanager update-secret --secret-id /mmc/cts/kb-assistant --region us-east-1 --secret-string <new-json>`) and restart the Scheduled Task (`schtasks /end /tn KbAssistant` → `schtasks /run /tn KbAssistant`). The module-level cache in `loadSecrets()` only resets on process start — restart is the rotation mechanism. See `docs/entra-app-registration-setup.md` Rotation section for the client-secret-specific walk-through.
 
+**Alternative cascade — env file on disk (no AWS path):** For deploys without AWS access, an operator may place a `.env.production` file at `D:\kbroles\.env.production` (one level above the standalone deploy target so it survives GHA redeploys that wipe `.next\standalone\`). The launcher `scripts/start.ps1` reads this file and populates `process.env` before Node starts, after which `loadSecrets()` short-circuits because `AWS_SECRET_NAME` is unset. See `docs/deploy-windows.md` Step 4.2 (alternative) for the full operator runbook. `NODE_EXTRA_CA_CERTS` STILL must stay machine-scope (see §3).
+
 **What's at this location at runtime** (for debugging a wedged deploy):
 
 | Env key | Source (prod) | Source (dev) | Consumed by |

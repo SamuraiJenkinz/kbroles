@@ -117,7 +117,40 @@ Replace `<app-host>` with your real FQDN. `HOSTNAME=127.0.0.1` and `PORT=3001` k
 
 **Reboot the box OR explicitly restart the Scheduled Task after setting machine-scope env vars.** Processes started before the env vars were set will not see them. A simple `schtasks /end /tn KbAssistant` + `schtasks /run /tn KbAssistant` is sufficient if the task was running.
 
+### Step 4.2 (alternative) — Env file on disk (no AWS path)
+
+For operators without AWS CLI access (e.g. the v1 pilot deploy), use this path instead of populating `AWS_*` env vars in Step 4.2. The application's secrets loader (`src/config/secrets.ts`) short-circuits to `process.env` when `AWS_SECRET_NAME` is unset — so simply not setting `AWS_SECRET_NAME` or `AWS_REGION` activates this path automatically.
+
+**1. Place the env file on disk:**
+
+- Path: `D:\kbroles\.env.production`
+- Why one level ABOVE `D:\kbroles\.next\standalone\`: the standalone dir is wiped on every GHA redeploy (Step 7). Placing the env file outside it lets it survive redeploys.
+- Template: copy `.env.production.example` from the repo root, fill in all values, transfer to the server.
+
+**2. Lock down ACL** (run as admin):
+
+```powershell
+icacls D:\kbroles\.env.production /inheritance:r /grant:r "<svcAcct>:R"
+```
+
+Replace `<svcAcct>` with the service account that launches the Node process.
+
+**3. Vars that STAY machine-scope (do NOT move into the env file):**
+
+- `NODE_EXTRA_CA_CERTS` — Node reads at TLS init, before any dotenv-style loader runs (see `docs/env-handling.md` §3 and [nodejs/node#51426](https://github.com/nodejs/node/issues/51426)). Moving it into the env file will silently break TLS to the MGTI ingress.
+- `AWS_REGION` (only if you later flip back to the AWS Secrets Manager path).
+
+**4. Launcher:** use `scripts/start.ps1` instead of the inline node launch in Step 4.3. The wrapper reads `D:\kbroles\.env.production` line by line, sets `$env:KEY = VALUE` for each entry, then launches node with the same Tee-Object logging. Update the Scheduled Task Action (Step 4.1 #5):
+
+- Program/script: `powershell.exe`
+- Add arguments: `-ExecutionPolicy Bypass -File scripts\start.ps1`
+- Start in: `D:\kbroles`
+
+See also: `docs/env-handling.md` §5 (alternative cascade addendum).
+
 ### 4.3 — (Recommended) Wrap the action for stdout logging
+
+> **If using the no-AWS env-file-on-disk path (Step 4.2 alternative), use `scripts/start.ps1` from the repo instead of the inline launch below.** The wrapper handles both env loading and Tee-Object logging in one step.
 
 Scheduled Tasks by default do NOT capture stdout/stderr. Node's `console.log` output is lost. For a pilot-grade box, wrap the action in a PowerShell script that redirects output to a file.
 
