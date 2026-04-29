@@ -83,7 +83,8 @@ Pre-pilot tactical fixes between v1 ship and v1.1 scope. Each row is a self-cont
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 001 | Env-file-on-disk deploy path (no-AWS alternative): start.ps1 wrapper + .env.production.example template + loadSecrets() early-return guard + docs cross-linking. Operator without AWS CLI access can now run pilot via `D:\kbroles\.env.production` + Scheduled Task → `scripts/start.ps1`. 729/729 unit tests green. | 2026-04-29 | 33e6d77 | [001-add-no-aws-env-file-deploy-path](./quick/001-add-no-aws-env-file-deploy-path/) |
+| 002 | Surface no-AWS path in DEPLOY-CHECKLIST.md: HB-6 restructured as AWS-or-env-file alternative, HB-7 marked optional on the no-AWS path, HB-9 Done-when accepts either path, background-reading section links `scripts/start.ps1` + `.env.production.example`. HB-5 (GHA AWS secrets) explicitly untouched — steward workflow still needs them. | 2026-04-29 | b6faef1 | [002-link-no-aws-path-from-deploy-checklist](./quick/002-link-no-aws-path-from-deploy-checklist/) |
 
 ---
 
-*Last activity: 2026-04-29 — Quick task 001 (no-AWS env-file deploy path) shipped. Placeholder ROADMAP.md created to bridge the between-milestones state until `/gsd:new-milestone` runs for v1.1.*
+*Last activity: 2026-04-29 — Quick task 002 (DEPLOY-CHECKLIST.md links to no-AWS path) shipped on top of 001. Operator without AWS CLI access can now follow the pilot checklist top-to-bottom and reach the env-file-on-disk path organically.*
