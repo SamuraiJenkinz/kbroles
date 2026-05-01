@@ -1,18 +1,16 @@
-import { readFileSync } from 'node:fs'
 import type { SourceId } from '@/grounding/schema'
 
-// Source markdown is loaded via readFileSync at module init (server-only).
-// The original `import X from './sources/X.md'` pattern worked in Vitest (custom
-// raw-markdown Vite plugin) and Next.js (Turbopack `{ type: 'raw' }` + webpack
-// `asset/source` rule) but broke under plain tsx, which has no `.md` loader.
-// readFileSync + import.meta.url is portable across tsx, Vitest, Node, and
-// Next.js server code — all of which is this module's only caller surface.
-const readSource = (rel: string): string =>
-  readFileSync(new URL(rel, import.meta.url), 'utf-8')
-
-const kb0020882Raw = readSource('./sources/kb0020882.md')
-const kb0022991Raw = readSource('./sources/kb0022991.md')
-const snowFormRaw  = readSource('./sources/servicenow-form.md')
+// .md files are loaded as raw strings at build time via static imports.
+// Webpack's `asset/source` rule and Turbopack's `{ type: 'raw' }` rule
+// (both in `next.config.ts`) handle the Next.js bundles, inlining the
+// markdown content as a string module with no runtime fs access needed.
+// Vitest uses the `rawMarkdown` plugin in `vitest.config.mts` to do the
+// same for unit tests. tsx (pnpm smoke) uses the loader hook registered
+// by `--import ./scripts/md-loader.mjs` in the smoke script entry in
+// package.json. No runtime readFileSync; no host-specific absolute paths.
+import kb0020882Raw from './sources/kb0020882.md'
+import kb0022991Raw from './sources/kb0022991.md'
+import snowFormRaw from './sources/servicenow-form.md'
 
 export type { SourceId } from '@/grounding/schema'
 

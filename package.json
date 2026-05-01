@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "smoke": "node --env-file-if-exists=.env.local --import tsx scripts/phase0-smoke.ts",
+    "smoke": "node --env-file-if-exists=.env.local --import ./scripts/register-md-loader.mjs --import tsx scripts/phase0-smoke.ts",
     "sn:validate": "tsx scripts/validate-servicenow-schema.ts",
     "test:e2e": "playwright test",
     "eval": "vitest run --config vitest.eval.config.ts",
