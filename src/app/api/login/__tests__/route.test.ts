@@ -49,4 +49,26 @@ describe('GET /api/login', () => {
       }),
     )
   })
+
+  it('coerces a path-only MSAL response to an absolute login.microsoftonline.com URL (Pitfall 13 — msal-node 5.1.4)', async () => {
+    getAuthCodeUrlSpy.mockResolvedValue(
+      '/some-tenant/oauth2/v2.0/authorize?client_id=x',
+    )
+    const resp = await GET()
+    expect(resp.status).toBe(307)
+    expect(resp.headers.get('location')).toBe(
+      'https://login.microsoftonline.com/some-tenant/oauth2/v2.0/authorize?client_id=x',
+    )
+  })
+
+  it('passes an already-absolute MSAL response through unchanged', async () => {
+    getAuthCodeUrlSpy.mockResolvedValue(
+      'https://login.microsoftonline.com/some-tenant/oauth2/v2.0/authorize?client_id=x',
+    )
+    const resp = await GET()
+    expect(resp.status).toBe(307)
+    expect(resp.headers.get('location')).toBe(
+      'https://login.microsoftonline.com/some-tenant/oauth2/v2.0/authorize?client_id=x',
+    )
+  })
 })

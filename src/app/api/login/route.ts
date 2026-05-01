@@ -14,6 +14,13 @@
  *   trailing slash; must match Entra App Registration exactly (AADSTS50011).
  * Pitfall 12 — loadSecrets() at top; module-level cache makes subsequent
  *   calls no-op.
+ * Pitfall 13 — msal-node 5.1.4 getAuthCodeUrl() returns a path-only URL
+ *   (e.g. '/<tenant>/oauth2/v2.0/authorize?...') rather than the absolute
+ *   'https://login.microsoftonline.com/<tenant>/...' the authority config
+ *   implies. NextResponse.redirect resolves path-only URLs against the
+ *   request host, sending users to our 404 instead of Entra. Defensive
+ *   absolute-URL coercion is applied before redirect; it becomes a no-op
+ *   if upstream msal-node is fixed to return absolute URLs again.
  */
 
 export const runtime = 'nodejs'
@@ -38,5 +45,19 @@ export async function GET(): Promise<Response> {
     responseMode: ResponseMode.QUERY,
   })
 
-  return NextResponse.redirect(authUrl)
+  // Defensive: msal-node 5.1.4 (and possibly other versions) returns a path-
+  // only URL like '/<tenant>/oauth2/v2.0/authorize?...' from getAuthCodeUrl()
+  // rather than the absolute 'https://login.microsoftonline.com/<tenant>/...'
+  // the authority config implies. NextResponse.redirect resolves path-only
+  // URLs against the request host, sending users to our 404 instead of Entra.
+  // Force absolute by prepending the canonical login.microsoftonline.com host
+  // when the URL doesn't already include a scheme. If upstream msal-node
+  // starts returning absolute URLs again, this becomes a harmless no-op.
+  // Quick task 003 (2026-04-29) — converts the deploy-day workaround into the
+  // real fix. See .planning/quick/003-fix-pilot-deploy-workarounds-into-real-fixes/.
+  const absoluteAuthUrl = /^https?:\/\//i.test(authUrl)
+    ? authUrl
+    : `https://login.microsoftonline.com${authUrl.startsWith('/') ? '' : '/'}${authUrl}`
+
+  return NextResponse.redirect(absoluteAuthUrl)
 }
