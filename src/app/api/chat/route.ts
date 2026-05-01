@@ -89,6 +89,25 @@ import { env } from '@/config/env'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+/**
+ * Summarise FallbackFlip[] for telemetry. Caps at `max` entries and emits a
+ * truncation marker. NEVER includes citation quote text — FallbackFlip itself
+ * deliberately omits quote (validator.ts:11-15) and this helper only forwards
+ * the three safe fields: source_id, section_id, reason. PII-safe.
+ */
+function summarizeFlips(
+  flips: ReadonlyArray<{ source_id: string; section_id: string; reason: string }>,
+  max = 10,
+): { flips: Array<{ source_id: string; section_id: string; reason: string }>; flips_truncated: boolean } {
+  const truncated = flips.length > max
+  const sliced = (truncated ? flips.slice(0, max) : flips).map(f => ({
+    source_id: f.source_id,
+    section_id: f.section_id,
+    reason: f.reason,
+  }))
+  return { flips: sliced, flips_truncated: truncated }
+}
+
 // SSE response headers (02-CONTEXT.md §1 "Response shape").
 // `X-Accel-Buffering: no` is a defence against any nginx-family hop between
 // client and server that might buffer the stream (Pitfall #10).
@@ -315,7 +334,12 @@ export async function POST(request: Request): Promise<Response> {
         // emit validator_flip with the count. This fires even on the happy path
         // if partial strips occurred — distinct from the fallback path below.
         if (validatorFlips > 0 && validated.can_answer !== false) {
-          trackEvent('validator_flip', { ...ctx, message_id }, { validator_flips: validatorFlips })
+          trackEvent(
+            'validator_flip',
+            { ...ctx, message_id },
+            { validator_flips: validatorFlips },
+            summarizeFlips(validated._flips, 10),
+          )
         }
 
         // Validator flipped everything (total strip) → answer_delta suppressed.
@@ -324,7 +348,12 @@ export async function POST(request: Request): Promise<Response> {
             encodeSse({ type: 'fallback', reason: 'all_citations_stripped', text: FALLBACK_STRING }),
           )
           fallbackReason = 'all_citations_stripped'
-          trackEvent('fallback_trigger', { ...ctx, message_id, reason: 'all_citations_stripped' })
+          trackEvent(
+            'fallback_trigger',
+            { ...ctx, message_id, reason: 'all_citations_stripped' },
+            {},
+            summarizeFlips(validated._flips, 10),
+          )
           return
         }
 

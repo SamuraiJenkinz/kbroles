@@ -846,9 +846,12 @@ describe('POST /api/chat — Plan 05.1-04 auth discriminants', () => {
 // without requiring a live OTel exporter or App Insights connection string.
 // =============================================================================
 
-/** Helper: extract all trackEvent call argument tuples from the spy. */
-function getEventCalls(): Array<[string, Record<string, unknown>, Record<string, number>]> {
-  return trackEventSpy.mock.calls as Array<[string, Record<string, unknown>, Record<string, number>]>
+/** Helper: extract all trackEvent call argument tuples from the spy.
+ * Returns 4-tuples: [name, dimensions, measurements, extras?].
+ * `extras` is the new optional 4th param (EventExtras) added in quick-004.
+ */
+function getEventCalls(): Array<[string, Record<string, unknown>, Record<string, number>, Record<string, unknown> | undefined]> {
+  return trackEventSpy.mock.calls as Array<[string, Record<string, unknown>, Record<string, number>, Record<string, unknown> | undefined]>
 }
 
 function happyStreamResult() {
@@ -995,6 +998,44 @@ describe('POST /api/chat — Plan 06-02 telemetry event stream', () => {
     const fallbackCall = calls.find(c => c[0] === 'fallback_trigger')
     expect(fallbackCall).toBeTruthy()
     expect(fallbackCall![1]['reason']).toBe('all_citations_stripped')
+  })
+
+  it('fallback_trigger with reason="all_citations_stripped" includes flips array (per-citation diagnostics)', async () => {
+    mockStreamAnswer.mockResolvedValue({
+      response: {
+        can_answer: true,
+        answer: 'An answer that looked OK.',
+        citations: [
+          // unknown_source_id flip — WRONG_SOURCE not in REGISTRY
+          { source_id: 'WRONG_SOURCE', section_id: 'who-can-submit', quote: 'irrelevant' },
+          // quote_not_in_body flip — real source/section but bogus quote
+          { source_id: 'KB0020882', section_id: 'who-can-submit', quote: 'absolutely-not-a-real-quote-string' },
+        ],
+      },
+      usage: { prompt_tokens: 80, completion_tokens: 30 },
+    })
+
+    const res = await POST(makePost(validBody()))
+    await readAllSseFrames(res)
+
+    const calls = getEventCalls()
+    const fallbackCall = calls.find(
+      c => c[0] === 'fallback_trigger' && (c[1] as Record<string, unknown>)['reason'] === 'all_citations_stripped',
+    )
+    expect(fallbackCall).toBeTruthy()
+    // The new 4th-position `extras` arg carries the flips diagnostic payload.
+    const extras = fallbackCall![3] as { flips: Array<Record<string, string>>; flips_truncated: boolean }
+    expect(extras).toBeTruthy()
+    expect(Array.isArray(extras.flips)).toBe(true)
+    expect(extras.flips.length).toBeGreaterThanOrEqual(1)
+    expect(extras.flips_truncated).toBe(false)
+    // Privacy: NO quote text leaks into the flip records — only safe fields.
+    for (const f of extras.flips) {
+      expect(Object.keys(f).sort()).toEqual(['reason', 'section_id', 'source_id'])
+      expect(typeof f.source_id).toBe('string')
+      expect(typeof f.section_id).toBe('string')
+      expect(typeof f.reason).toBe('string')
+    }
   })
 
   it('ingress_error is emitted when streamAnswer throws UpstreamAuthError', async () => {

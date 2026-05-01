@@ -151,4 +151,25 @@ describe('trackEvent()', () => {
     // asynchronously — asserting it was called here confirms sync execution.
     expect(mockSpanEnd).toHaveBeenCalledOnce()
   })
+
+  it('extras param flows to pino logger.info but NOT to OTel span attributes', () => {
+    const flipsPayload = {
+      flips: [{ source_id: 'KB0020882', section_id: 'who-can-submit', reason: 'quote_not_in_body' }],
+      flips_truncated: false,
+    }
+    trackEvent('validator_flip', { role: 'author' }, { validator_flips: 1 }, flipsPayload)
+
+    // --- pino: extras must appear in the logger.info binding object ---
+    expect(mockLoggerInfo).toHaveBeenCalledOnce()
+    const logCalls = mockLoggerInfo.mock.calls as unknown as Array<[Record<string, unknown>, string]>
+    const [bindings] = logCalls[0]
+    expect(bindings['flips']).toEqual(flipsPayload.flips)
+    expect(bindings['flips_truncated']).toBe(false)
+
+    // --- OTel: extras must NOT appear in span attributes (flat-string schema) ---
+    const spanCalls = mockStartSpan.mock.calls as unknown as Array<[string, { kind: unknown; attributes: Record<string, unknown> }]>
+    const [, options] = spanCalls[0]
+    expect('flips' in options.attributes).toBe(false)
+    expect('flips_truncated' in options.attributes).toBe(false)
+  })
 })
