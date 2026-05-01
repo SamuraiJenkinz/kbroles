@@ -1,7 +1,7 @@
 # scripts/start.ps1 — KB Assistant launcher for the no-AWS env-file-on-disk deploy path.
 #
 # Reads D:\kbroles\.env.production line by line, sets each KEY=VALUE pair into
-# the current process environment, then launches node with Tee-Object logging.
+# the current process environment, then launches node with Start-Process logging.
 #
 # Usage: powershell.exe -ExecutionPolicy Bypass -File scripts\start.ps1
 #   (or change the Scheduled Task Action to reference this script — see
@@ -13,6 +13,8 @@
 #   - Node exe path is hard-coded to C:\Program Files\nodejs\node.exe.
 #   - Log path is hard-coded to D:\logs\kbassistant.log (created by Step 3 in
 #     docs/deploy-windows.md).
+#   - Stderr log path is hard-coded to D:\logs\kbassistant.err.log (created
+#     alongside the stdout log; same icacls treatment).
 #
 # Security notes:
 #   - No env values are ever written to stdout or the log file.
@@ -22,10 +24,11 @@
 
 $ErrorActionPreference = 'Stop'
 
-$EnvFile   = 'D:\kbroles\.env.production'
-$NodeExe   = 'C:\Program Files\nodejs\node.exe'
-$ServerJs  = 'D:\kbroles\.next\standalone\server.js'
-$LogFile   = 'D:\logs\kbassistant.log'
+$EnvFile       = 'D:\kbroles\.env.production'
+$NodeExe       = 'C:\Program Files\nodejs\node.exe'
+$ServerJs      = 'D:\kbroles\.next\standalone\server.js'
+$LogFile       = 'D:\logs\kbassistant.log'
+$StderrLogFile = 'D:\logs\kbassistant.err.log'
 
 # ── Guard: env file must exist before we try to load it ──────────────────────
 if (-not (Test-Path $EnvFile)) {
@@ -61,6 +64,32 @@ foreach ($line in (Get-Content $EnvFile)) {
 # Report count only — never log values.
 Write-Host "[start.ps1] Loaded $count env vars from $EnvFile"
 
-# ── Launch Node with stdout+stderr captured to the log file ──────────────────
-& $NodeExe $ServerJs *>&1 | Tee-Object -FilePath $LogFile -Append
-exit $LASTEXITCODE
+# ── Launch Node in a child process with both streams redirected to disk ──────
+#
+# WHY Start-Process (not `& $NodeExe ... | Tee-Object`):
+#   The pipe form works under an interactive admin shell but silently breaks
+#   when this script is launched non-interactively by Task Scheduler. With no
+#   TTY, Tee-Object's pipe context causes Node to detect a closed stdin and
+#   exit shortly after `Ready in 0ms` — port 3001 never binds, IIS then 502s.
+#   Start-Process gives the Node child its own (detached) standard handles
+#   wired directly to log files, so stdin closure no longer signals shutdown.
+#   Quick task 003 (2026-04-29) — converts the deploy-day workaround into the
+#   real fix. See .planning/quick/003-fix-pilot-deploy-workarounds-into-real-fixes/.
+#
+# Start-Process requires DIFFERENT files for stdout vs stderr (it errors out if
+# the same path is given for both). Stdout is the operational log the operator
+# tails; stderr captures unexpected Node-level failures (rare).
+#
+# D:\logs\kbassistant.err.log is writable by NetworkService — already covered
+# by the `icacls D:\logs /grant "NT AUTHORITY\NetworkService:(OI)(CI)W"` grant
+# in docs/deploy-windows.md Step 3. No new operator action required.
+$proc = Start-Process `
+    -FilePath $NodeExe `
+    -ArgumentList @($ServerJs) `
+    -NoNewWindow `
+    -RedirectStandardOutput $LogFile `
+    -RedirectStandardError $StderrLogFile `
+    -PassThru
+
+Wait-Process -InputObject $proc
+exit $proc.ExitCode
