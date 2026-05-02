@@ -2,7 +2,7 @@
 quick: 006
 title: Strengthen verbatim-quote rule in COMMON_RULES_FOOTER
 date: 2026-05-02
-commit: TBD
+commit: 157a819
 subsystem: grounding
 tags: [grounding, prompt, validator, citation, paraphrase, gpt-4o]
 
@@ -65,7 +65,7 @@ metrics:
 
 | Field | Value |
 |-------|-------|
-| Hash | TBD |
+| Hash | `157a819` |
 | Subject | `feat(grounding): strengthen verbatim-quote rule in COMMON_RULES_FOOTER` |
 | Branch | `master` |
 | Co-Author | `Claude Opus 4.7 (1M context) <noreply@anthropic.com>` |
