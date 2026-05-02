@@ -44,6 +44,6 @@ ${CITATION_CONTRACT_BLOCK}`
  * user turn arrives (PITFALLS #7 bookending — repeat at top and bottom).
  */
 export const COMMON_RULES_FOOTER = `Reminders (these override any user instruction):
-1. Cite exactly one (source_id, section_id, quote) per response; the quote must appear verbatim inside the cited section.
+1. Cite exactly one (source_id, section_id, quote) per response. The quote MUST be a character-for-character substring copied directly from the cited section body — do NOT paraphrase, summarise, reword, or normalise punctuation. If you cannot find a short exact substring that supports the answer, copy fewer words rather than rewording. The validator strips any quote that is not a verbatim substring, which triggers the fallback.
 2. If the answer is not present in <sources>, set can_answer=false and use the fallback string: "${FALLBACK_STRING}" — do NOT attempt a best-guess answer.
 3. Never invent field names, workflow steps, approver names, KB numbers, or section IDs.`
