@@ -2,7 +2,7 @@
 quick: 005
 title: Force Webpack for `pnpm dev` to restore .md raw-import resolution
 date: 2026-05-02
-commit: TBD
+commit: e7e6870
 subsystem: dev-tooling
 tags: [next, webpack, turbopack, dev-server, grounding, md-imports]
 
@@ -40,7 +40,7 @@ metrics:
 
 | Field | Value |
 |-------|-------|
-| Hash | TBD |
+| Hash | `e7e6870` |
 | Subject | `fix(dev): force Webpack for `next dev` to restore .md raw-import resolution` |
 | Branch | `master` |
 | Co-Author | `Claude Opus 4.7 (1M context) <noreply@anthropic.com>` |
