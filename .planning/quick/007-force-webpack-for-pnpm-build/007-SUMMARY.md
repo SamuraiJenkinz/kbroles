@@ -2,7 +2,7 @@
 quick: 007
 title: Force Webpack for `pnpm build` (sister fix to quick-005)
 date: 2026-05-02
-commit: TBD
+commit: 987d3e7
 subsystem: dev-tooling
 tags: [next, webpack, turbopack, build, prod-deploy, grounding, md-imports]
 
@@ -40,7 +40,7 @@ metrics:
 
 | Field | Value |
 |-------|-------|
-| Hash | TBD |
+| Hash | `987d3e7` |
 | Subject | `fix(build): force Webpack for `next build` to restore .md raw-import resolution` |
 | Branch | `master` |
 | Co-Author | `Claude Opus 4.7 (1M context) <noreply@anthropic.com>` |
