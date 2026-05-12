@@ -1,4 +1,10 @@
-import { ENTITY_ALLOWLIST, NAME_RE, KB_ID_RE, URL_RE } from '@/grounding/entities'
+import {
+  ENTITY_ALLOWLIST,
+  NAME_RE,
+  KB_ID_RE,
+  URL_RE,
+  SOURCE_CORPUS_LOWERCASE,
+} from '@/grounding/entities'
 
 /**
  * Phase-2 entity-allowlist post-check (CORP-02 / 02-CONTEXT.md §2).
@@ -39,7 +45,24 @@ export function checkEntityAllowlist(answerText: string): AllowlistResult {
   // state does not leak between calls. Use the capture group for names
   // (NAME_RE has a parenthesised group); use match[0] for KB IDs and URLs.
   const names = [...answerText.matchAll(NAME_RE)].map(m => m[1])
-  const badNames = names.filter(n => !ENTITY_ALLOWLIST.names.has(n))
+  const badNames = names.filter(n => {
+    // Tier 1 — strict-equality match against the regex-extracted allowlist
+    // (existing CORP-02 behaviour, preserved). Real approver names from KB
+    // bodies match here directly.
+    if (ENTITY_ALLOWLIST.names.has(n)) return false
+
+    // Quick 011 Tier 2 — case-insensitive substring match against the
+    // lowercased source corpus. Catches LLM-introduced title-case variants
+    // of source-mentioned terms ("Knowledge Base" when source has
+    // "Knowledge base", "Subject Matter" when source has "subject matter
+    // expert") which the NAME_RE-based Tier 1 extraction missed because
+    // the regex requires both words title-cased. Fabricated names that
+    // don't appear in any casing anywhere in the corpus still fail —
+    // CORP-02 invented-name guard is preserved.
+    if (SOURCE_CORPUS_LOWERCASE.includes(n.toLowerCase())) return false
+
+    return true
+  })
   if (badNames.length > 0) {
     return { passed: false, violationClass: 'names', tokenCount: badNames.length }
   }

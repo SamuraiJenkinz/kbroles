@@ -50,3 +50,37 @@ function extract(): EntityAllowlist {
 }
 
 export const ENTITY_ALLOWLIST: EntityAllowlist = extract()
+
+/**
+ * Quick 011 — concatenated source-body corpus, lowercased, for case-insensitive
+ * substring fallback matching in `src/chat/allowlist.ts`. Built at module load
+ * alongside ENTITY_ALLOWLIST.
+ *
+ * Why this exists: NAME_RE requires BOTH words title-cased to match, so
+ * source phrases like "Knowledge base" (lowercase b) are never extracted into
+ * ENTITY_ALLOWLIST.names. When an LLM response writes the natural variant
+ * "Knowledge Base" (title-case both), the answer-side regex match succeeds,
+ * but ENTITY_ALLOWLIST.names doesn't contain the title-case form — so the
+ * strict-equality check in checkEntityAllowlist() rejects it as fabricated
+ * even though the underlying referent IS in the source.
+ *
+ * This corpus string lets the allowlist post-check do a case-insensitive
+ * substring lookup as a second-tier match. If the answer's title-case bigram
+ * (lowercased) appears anywhere in the source corpus, the name is allowed
+ * through. Pure substring rather than tokenised match — fast, conservative,
+ * and preserves the fabricated-name guard because any bigram NOT present in
+ * any casing anywhere in the corpus still fails.
+ *
+ * Memory cost: ~10K chars total across the three SOP sources. Negligible.
+ * Per-check cost: one `.toLowerCase()` on the answer-side name + one
+ * `.includes()` substring search against the precomputed lowercased corpus.
+ */
+export const SOURCE_CORPUS_LOWERCASE: string = (() => {
+  const bodies: string[] = []
+  for (const source of Object.values(REGISTRY)) {
+    for (const section of source.sections) {
+      bodies.push(section.body)
+    }
+  }
+  return bodies.join('\n').toLowerCase()
+})()
