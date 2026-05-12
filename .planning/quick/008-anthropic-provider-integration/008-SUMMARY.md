@@ -176,7 +176,23 @@ Before the operator flips `LLM_PROVIDER=anthropic` on prod:
 1. **Provision the MGTI Anthropic API key** via the YAML PR + Hubble flow described in the MGTI spec (page 5). App name must be lower-kebab-case (e.g. `mmc-kbroles`).
 2. **Pick the regional endpoint** — `int.nasa.apis.mmc.com` (production NASA) for US-based operator, or the EMEA/staging variants for other paths. Spec page 3 has the full table.
 3. **Verify the model name** is on the allowed list. Currently the spec lists 5 models (Opus 4.6, Sonnet 4.6, Opus 4.5, Sonnet 4.5, Haiku 4.5). All require the `eu.` prefix per current proxy config.
-4. **Smoke test on staging first** — fire 3-5 requests through the new path and watch for guardrail false-positives on SOP content. The `flips: [...]` telemetry from quick-004 doesn't apply here (no validator strips on the citation contract side since the validator runs the same way), but the route's `fallback_trigger` events will surface refusals if guardrails intervene.
+4. **Smoke test the MGTI proxy itself via Bruno** — BEFORE touching kbroles. MGTI ships a pre-configured Bruno API collection at `mmctech/coreapi-apigee` → `proxies/llm-anthropic/bruno/` on MMC GitHub Enterprise (README documents the setup). This lets the operator validate the API key, network connectivity, regional endpoint, and guardrail behaviour with zero kbroles code in the loop. Workflow:
+   ```powershell
+   # Clone the proxy repo (one-time):
+   git clone https://<mmc-github-enterprise>/mmctech/coreapi-apigee
+   # Install Bruno from usebruno.com if not already present.
+   # Open Bruno → Open Collection → coreapi-apigee\proxies\llm-anthropic\bruno
+   # Select the environment file matching your deploy (e.g. "Production NASA")
+   # Paste the Hubble API key into the `apiKey` variable
+   # Fire the "Create Message" request with a kbroles-style system prompt
+   #   + Author chip ("What fields do I need to fill in on the form?")
+   # Confirm:
+   #   - 200 OK response
+   #   - content[0].text contains valid-looking JSON
+   #   - stop_reason is "end_turn" (NOT "guardrail_intervened")
+   ```
+   If Bruno fails, the MGTI proxy or the key is the problem; the kbroles adapter is not the suspect. If Bruno succeeds, the adapter will succeed.
+5. **Smoke test on kbroles staging** — fire 3-5 requests through the kbroles `/api/chat` route with `LLM_PROVIDER=anthropic` set in a non-prod `.env` and watch for guardrail false-positives on SOP content. The `flips: [...]` telemetry from quick-004 doesn't apply here (no validator strips on the citation contract side since the validator runs the same way), but the route's `fallback_trigger` events will surface refusals if guardrails intervene.
 
 ## Confirmed invariants
 
