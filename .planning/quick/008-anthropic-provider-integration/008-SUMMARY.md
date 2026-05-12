@@ -2,7 +2,7 @@
 quick: 008
 title: Add Anthropic provider via MGTI proxy as configurable LLM alternative
 date: 2026-05-11
-commit: TBD
+commit: bcae905
 subsystem: llm
 tags: [llm, anthropic, claude, mgti, provider-abstraction, env-config, bedrock]
 
@@ -79,7 +79,7 @@ metrics:
 
 | Field | Value |
 |---|---|
-| Hash | TBD |
+| Hash | `bcae905` |
 | Subject | `feat(llm): add Anthropic provider via MGTI proxy as configurable alternative` |
 | Branch | `master` |
 | Co-Author | `Claude Opus 4.7 (1M context) <noreply@anthropic.com>` |
