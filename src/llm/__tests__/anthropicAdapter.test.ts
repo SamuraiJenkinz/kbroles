@@ -19,15 +19,16 @@ import {
 const ORIGINAL_ENV = { ...process.env }
 const ORIGINAL_FETCH = globalThis.fetch
 
-const VALID_KB_RESPONSE = JSON.stringify({
+const VALID_KB_OBJECT = {
   can_answer: true,
   answer: 'Click Flag Article.',
   citations: [
     { source_id: 'KB0022991', section_id: 'flagging-articles', quote: 'Click the Flag Article button' },
   ],
-})
+}
+const VALID_KB_JSON = JSON.stringify(VALID_KB_OBJECT)
 
-function setAnthropicEnv() {
+function setAnthropicEnv(opts?: { toolsSupported?: 'true' | 'false' }) {
   // Wipe OpenAI vars so the superRefine doesn't complain about both providers
   delete process.env.LLM_AUTH_MODE
   delete process.env.LLM_BASE_URL
@@ -41,6 +42,11 @@ function setAnthropicEnv() {
   delete process.env.ANTHROPIC_VERSION
   delete process.env.ANTHROPIC_MAX_TOKENS
   delete process.env.ANTHROPIC_TEMPERATURE
+  if (opts?.toolsSupported === 'false') {
+    process.env.ANTHROPIC_TOOLS_SUPPORTED = 'false'
+  } else {
+    delete process.env.ANTHROPIC_TOOLS_SUPPORTED
+  }
   __resetEnvCacheForTests()
 }
 
@@ -56,15 +62,43 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-/** Build a mock Response with content blocks + optional stop_reason + usage. */
+/**
+ * Build a mock Response with content blocks. Mode-aware:
+ *   - 'tool' (default): emits a tool_use block with input=parsed object.
+ *     Use this for the default tool-use mode (Quick 009). Pass an object
+ *     via `toolInput`, or a string via `text` and we'll JSON.parse it.
+ *   - 'text': emits a text block with .text=string. Use this for the
+ *     ANTHROPIC_TOOLS_SUPPORTED=false fallback path tests.
+ */
 function mockAnthropicResponse(opts: {
+  mode?: 'tool' | 'text'
   text?: string
+  toolInput?: unknown
   stop_reason?: string
   usage?: { input_tokens: number; output_tokens: number }
   status?: number
   bodyOverride?: string
 }): Response {
+  const mode = opts.mode ?? 'tool'
   const status = opts.status ?? 200
+
+  let content: Array<Record<string, unknown>>
+  if (opts.bodyOverride) {
+    content = [] // ignored; bodyOverride takes precedence
+  } else if (opts.text === undefined && opts.toolInput === undefined) {
+    content = [] // empty (guardrail path)
+  } else if (mode === 'tool') {
+    const input =
+      opts.toolInput !== undefined
+        ? opts.toolInput
+        : (opts.text ? safeParse(opts.text) : {})
+    content = [
+      { type: 'tool_use', id: 'toolu_test_id', name: 'emit_kb_response', input },
+    ]
+  } else {
+    content = [{ type: 'text', text: opts.text ?? '' }]
+  }
+
   const body =
     opts.bodyOverride ??
     JSON.stringify({
@@ -72,19 +106,24 @@ function mockAnthropicResponse(opts: {
       type: 'message',
       role: 'assistant',
       model: 'test-model',
-      content:
-        opts.text !== undefined ? [{ type: 'text', text: opts.text }] : [],
-      stop_reason: opts.stop_reason ?? 'end_turn',
+      content,
+      // Tool-use mode success returns stop_reason='tool_use' on the happy path;
+      // text-mode returns 'end_turn'. Caller can override.
+      stop_reason: opts.stop_reason ?? (mode === 'tool' ? 'tool_use' : 'end_turn'),
       usage: opts.usage ?? { input_tokens: 25, output_tokens: 12 },
     })
   return new Response(body, { status, headers: { 'Content-Type': 'application/json' } })
 }
 
-describe('streamAnswerAnthropic — happy path', () => {
-  it('returns the parsed KbResponse and usage on a valid content block', async () => {
+function safeParse(s: string): unknown {
+  try { return JSON.parse(s) } catch { return s }
+}
+
+describe('streamAnswerAnthropic — happy path (default tool-use mode)', () => {
+  it('returns the parsed KbResponse and usage from a tool_use content block', async () => {
     globalThis.fetch = vi
       .fn()
-      .mockResolvedValue(mockAnthropicResponse({ text: VALID_KB_RESPONSE }))
+      .mockResolvedValue(mockAnthropicResponse({ toolInput: VALID_KB_OBJECT }))
 
     const result = await streamAnswerAnthropic({
       systemPrompt: 'You answer KB questions.',
@@ -99,7 +138,7 @@ describe('streamAnswerAnthropic — happy path', () => {
   it('targets POST /model/{modelName} with x-api-key + Content-Type headers + a fresh X-Correlation-Id per attempt', async () => {
     const fetchSpy = vi
       .fn()
-      .mockResolvedValue(mockAnthropicResponse({ text: VALID_KB_RESPONSE }))
+      .mockResolvedValue(mockAnthropicResponse({ toolInput: VALID_KB_OBJECT }))
     globalThis.fetch = fetchSpy
 
     await streamAnswerAnthropic({
@@ -121,10 +160,10 @@ describe('streamAnswerAnthropic — happy path', () => {
     )
   })
 
-  it('sends system prompt as top-level field (not in messages array) + Anthropic body shape', async () => {
+  it('sends system prompt as top-level field (not in messages array) + base Anthropic body shape', async () => {
     const fetchSpy = vi
       .fn()
-      .mockResolvedValue(mockAnthropicResponse({ text: VALID_KB_RESPONSE }))
+      .mockResolvedValue(mockAnthropicResponse({ toolInput: VALID_KB_OBJECT }))
     globalThis.fetch = fetchSpy
 
     await streamAnswerAnthropic({
@@ -151,8 +190,10 @@ describe('streamAnswerAnthropic — happy path', () => {
           type: 'message',
           role: 'assistant',
           model: 'test-model',
-          content: [{ type: 'text', text: VALID_KB_RESPONSE }],
-          stop_reason: 'end_turn',
+          content: [
+            { type: 'tool_use', id: 'toolu_x', name: 'emit_kb_response', input: VALID_KB_OBJECT },
+          ],
+          stop_reason: 'tool_use',
           // usage intentionally absent
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -164,6 +205,121 @@ describe('streamAnswerAnthropic — happy path', () => {
       messages: [{ role: 'user', content: 'q' }],
     })
     expect(result.usage).toBeNull()
+  })
+
+  it('treats stop_reason="tool_use" as success (NOT as a refusal)', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      mockAnthropicResponse({ toolInput: VALID_KB_OBJECT, stop_reason: 'tool_use' }),
+    )
+    const result = await streamAnswerAnthropic({
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'q' }],
+    })
+    expect(result.response.can_answer).toBe(true)
+  })
+})
+
+describe('streamAnswerAnthropic — strict-tools body shape (Quick 009)', () => {
+  it('includes a tools array with emit_kb_response + CITATION_SCHEMA as input_schema', async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValue(mockAnthropicResponse({ toolInput: VALID_KB_OBJECT }))
+    globalThis.fetch = fetchSpy
+
+    await streamAnswerAnthropic({
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'q' }],
+    })
+
+    const init = fetchSpy.mock.calls[0][1] as RequestInit
+    const sentBody = JSON.parse(init.body as string)
+    expect(Array.isArray(sentBody.tools)).toBe(true)
+    expect(sentBody.tools).toHaveLength(1)
+    expect(sentBody.tools[0].name).toBe('emit_kb_response')
+    expect(typeof sentBody.tools[0].description).toBe('string')
+    // input_schema must be the same CITATION_SCHEMA the validator uses — no
+    // duplicate definitions anywhere in the codebase.
+    expect(sentBody.tools[0].input_schema.type).toBe('object')
+    expect(sentBody.tools[0].input_schema.required).toContain('can_answer')
+    expect(sentBody.tools[0].input_schema.required).toContain('citations')
+  })
+
+  it('forces tool_choice to emit_kb_response with disable_parallel_tool_use=true', async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValue(mockAnthropicResponse({ toolInput: VALID_KB_OBJECT }))
+    globalThis.fetch = fetchSpy
+
+    await streamAnswerAnthropic({
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'q' }],
+    })
+
+    const init = fetchSpy.mock.calls[0][1] as RequestInit
+    const sentBody = JSON.parse(init.body as string)
+    expect(sentBody.tool_choice).toEqual({
+      type: 'tool',
+      name: 'emit_kb_response',
+      disable_parallel_tool_use: true,
+    })
+  })
+
+  it('retries once when the response is missing the tool_use block, then succeeds', async () => {
+    // First response: empty content (proxy bug or upstream weirdness)
+    // Second response: proper tool_use block
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'msg_test',
+            type: 'message',
+            role: 'assistant',
+            model: 'test-model',
+            content: [], // no tool_use block — adapter should retry
+            stop_reason: 'end_turn',
+            usage: { input_tokens: 10, output_tokens: 0 },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(mockAnthropicResponse({ toolInput: VALID_KB_OBJECT }))
+
+    const result = await streamAnswerAnthropic({
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'q' }],
+    })
+    expect(result.response.can_answer).toBe(true)
+    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2)
+  })
+
+  it('retries once when the tool_use block has the wrong tool name', async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'msg_test',
+            type: 'message',
+            role: 'assistant',
+            model: 'test-model',
+            content: [
+              { type: 'tool_use', id: 'toolu_x', name: 'wrong_tool_name', input: VALID_KB_OBJECT },
+            ],
+            stop_reason: 'tool_use',
+            usage: { input_tokens: 10, output_tokens: 5 },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(mockAnthropicResponse({ toolInput: VALID_KB_OBJECT }))
+
+    const result = await streamAnswerAnthropic({
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'q' }],
+    })
+    expect(result.response.can_answer).toBe(true)
+    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2)
   })
 })
 
@@ -198,28 +354,17 @@ describe('streamAnswerAnthropic — guardrail + refusal paths', () => {
   })
 })
 
-describe('streamAnswerAnthropic — schema-reject retry path', () => {
-  it('retries once on JSON parse failure, then succeeds', async () => {
+describe('streamAnswerAnthropic — schema-reject retry path (tool-use mode)', () => {
+  it('retries once on Ajv validation failure (malformed tool input), then succeeds', async () => {
+    // First tool_use input is missing the required `citations` field — Ajv rejects.
+    // Bedrock SHOULD enforce the schema, but Ajv is defense-in-depth in case
+    // the proxy returns malformed input under unusual conditions.
     globalThis.fetch = vi
       .fn()
-      .mockResolvedValueOnce(mockAnthropicResponse({ text: 'not-valid-json' }))
-      .mockResolvedValueOnce(mockAnthropicResponse({ text: VALID_KB_RESPONSE }))
-
-    const result = await streamAnswerAnthropic({
-      systemPrompt: 'sys',
-      messages: [{ role: 'user', content: 'q' }],
-    })
-
-    expect(result.response.can_answer).toBe(true)
-    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2)
-  })
-
-  it('retries once on Ajv validation failure, then succeeds', async () => {
-    const BAD = JSON.stringify({ can_answer: true, answer: 'x' }) // missing citations
-    globalThis.fetch = vi
-      .fn()
-      .mockResolvedValueOnce(mockAnthropicResponse({ text: BAD }))
-      .mockResolvedValueOnce(mockAnthropicResponse({ text: VALID_KB_RESPONSE }))
+      .mockResolvedValueOnce(
+        mockAnthropicResponse({ toolInput: { can_answer: true, answer: 'x' } }),
+      )
+      .mockResolvedValueOnce(mockAnthropicResponse({ toolInput: VALID_KB_OBJECT }))
 
     const result = await streamAnswerAnthropic({
       systemPrompt: 'sys',
@@ -231,11 +376,11 @@ describe('streamAnswerAnthropic — schema-reject retry path', () => {
   })
 
   it('throws SchemaRejectAfterRetryError after two Ajv failures', async () => {
-    const BAD = JSON.stringify({ not: 'valid' })
+    const BAD_INPUT = { not: 'valid' }
     globalThis.fetch = vi
       .fn()
-      .mockResolvedValueOnce(mockAnthropicResponse({ text: BAD }))
-      .mockResolvedValueOnce(mockAnthropicResponse({ text: BAD }))
+      .mockResolvedValueOnce(mockAnthropicResponse({ toolInput: BAD_INPUT }))
+      .mockResolvedValueOnce(mockAnthropicResponse({ toolInput: BAD_INPUT }))
 
     await expect(
       streamAnswerAnthropic({
@@ -243,6 +388,80 @@ describe('streamAnswerAnthropic — schema-reject retry path', () => {
         messages: [{ role: 'user', content: 'q' }],
       }),
     ).rejects.toBeInstanceOf(SchemaRejectAfterRetryError)
+  })
+})
+
+describe('streamAnswerAnthropic — text-mode fallback (ANTHROPIC_TOOLS_SUPPORTED=false)', () => {
+  // Escape hatch path — operator flips this flag if the MGTI proxy ever stops
+  // honouring `tools` pass-through. Adapter falls back to prompt-only JSON
+  // discipline + text content block + JSON.parse + Ajv with one retry.
+  beforeEach(() => {
+    setAnthropicEnv({ toolsSupported: 'false' })
+  })
+
+  it('does NOT include tools or tool_choice in the request body', async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValue(mockAnthropicResponse({ mode: 'text', text: VALID_KB_JSON }))
+    globalThis.fetch = fetchSpy
+
+    await streamAnswerAnthropic({
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'q' }],
+    })
+
+    const init = fetchSpy.mock.calls[0][1] as RequestInit
+    const sentBody = JSON.parse(init.body as string)
+    expect(sentBody.tools).toBeUndefined()
+    expect(sentBody.tool_choice).toBeUndefined()
+    // Base fields still present
+    expect(sentBody.system).toBe('sys')
+    expect(sentBody.max_tokens).toBe(1024)
+  })
+
+  it('extracts the parsed KbResponse from a text content block', async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(mockAnthropicResponse({ mode: 'text', text: VALID_KB_JSON }))
+
+    const result = await streamAnswerAnthropic({
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'q' }],
+    })
+
+    expect(result.response.can_answer).toBe(true)
+    expect(result.response.citations[0].section_id).toBe('flagging-articles')
+  })
+
+  it('retries once on JSON parse failure, then succeeds', async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(mockAnthropicResponse({ mode: 'text', text: 'not-valid-json' }))
+      .mockResolvedValueOnce(mockAnthropicResponse({ mode: 'text', text: VALID_KB_JSON }))
+
+    const result = await streamAnswerAnthropic({
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'q' }],
+    })
+
+    expect(result.response.can_answer).toBe(true)
+    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2)
+  })
+
+  it('retries once on Ajv validation failure, then succeeds', async () => {
+    const BAD = JSON.stringify({ can_answer: true, answer: 'x' })
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(mockAnthropicResponse({ mode: 'text', text: BAD }))
+      .mockResolvedValueOnce(mockAnthropicResponse({ mode: 'text', text: VALID_KB_JSON }))
+
+    const result = await streamAnswerAnthropic({
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'q' }],
+    })
+
+    expect(result.response.can_answer).toBe(true)
+    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2)
   })
 })
 
@@ -360,7 +579,7 @@ describe('streamAnswerAnthropic — env config respected', () => {
 
     const fetchSpy = vi
       .fn()
-      .mockResolvedValue(mockAnthropicResponse({ text: VALID_KB_RESPONSE }))
+      .mockResolvedValue(mockAnthropicResponse({ toolInput: VALID_KB_OBJECT }))
     globalThis.fetch = fetchSpy
 
     await streamAnswerAnthropic({

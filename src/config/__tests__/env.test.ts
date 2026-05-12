@@ -143,6 +143,28 @@ describe('env — LLM_PROVIDER switching (Quick 008)', () => {
     ).toThrow(/Invalid env/)
   })
 
+  it('ANTHROPIC_TOOLS_SUPPORTED defaults to "true" when unset (Quick 009)', () => {
+    const env = loadEnv(ANTHROPIC_VARS as unknown as NodeJS.ProcessEnv)
+    expect(env.ANTHROPIC_TOOLS_SUPPORTED).toBe('true')
+  })
+
+  it('ANTHROPIC_TOOLS_SUPPORTED accepts "false" (operator escape hatch)', () => {
+    const env = loadEnv({
+      ...ANTHROPIC_VARS,
+      ANTHROPIC_TOOLS_SUPPORTED: 'false',
+    } as unknown as NodeJS.ProcessEnv)
+    expect(env.ANTHROPIC_TOOLS_SUPPORTED).toBe('false')
+  })
+
+  it('ANTHROPIC_TOOLS_SUPPORTED rejects typos like "flase" (Zod enum guard)', () => {
+    expect(() =>
+      loadEnv({
+        ...ANTHROPIC_VARS,
+        ANTHROPIC_TOOLS_SUPPORTED: 'flase',
+      } as unknown as NodeJS.ProcessEnv),
+    ).toThrow(/Invalid env/)
+  })
+
   it('LLM_PROVIDER=openai (default) still rejects missing LLM_MODEL', () => {
     const { LLM_MODEL: _omit, ...vars } = REQUIRED_VARS
     void _omit

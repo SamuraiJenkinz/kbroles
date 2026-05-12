@@ -53,6 +53,21 @@ const EnvSchema = z.object({
   ANTHROPIC_VERSION: z.string().min(1).optional().default('bedrock-2023-05-31'),
   ANTHROPIC_MAX_TOKENS: z.coerce.number().int().min(1).optional().default(1024),
   ANTHROPIC_TEMPERATURE: z.coerce.number().min(0).max(1).optional().default(0),
+  // Quick 009 — Anthropic tool-use mode. Defaults to 'true' because MGTI's
+  // /coreapi/llm/anthropic/v1 proxy passes through `tools` + `tool_choice` to
+  // AWS Bedrock, which then enforces the kbroles CITATION_SCHEMA at the API
+  // level (analogous to OpenAI's response_format: { type: 'json_schema',
+  // strict: true } on the primary path). This restores the defense-in-depth
+  // backstop that was missing in Quick 008.
+  //
+  // Set to 'false' as a proxy-regression escape hatch: if MGTI ever stops
+  // honouring `tools` pass-through, flipping this flag falls back to the
+  // prompt-only JSON discipline path (text content block + JSON.parse +
+  // Ajv with one retry — the same path as quick-008 shipped originally).
+  // Same Zod-validated 'true'/'false' string contract as STRICT_SCHEMA_SUPPORTED
+  // — catches typos like 'flase' or 'False' at loadEnv() rather than at
+  // first request time.
+  ANTHROPIC_TOOLS_SUPPORTED: z.enum(['true', 'false']).optional().default('true'),
 
   // Phase-2 /api/chat route limits (02-CONTEXT.md §3 + §4.1).
   // z.coerce.number() lets process.env string values like "20" parse

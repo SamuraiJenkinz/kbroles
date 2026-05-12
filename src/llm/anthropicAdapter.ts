@@ -57,10 +57,25 @@ export interface AnthropicAdapterParams {
 
 /**
  * Anthropic Messages API response shape (just the fields we read).
+ *
+ * Content blocks vary by mode:
+ *   - text mode (ANTHROPIC_TOOLS_SUPPORTED=false): { type: 'text', text: string }
+ *   - tool-use mode (default, Quick 009): { type: 'tool_use', id, name, input: <object> }
+ *
+ * The `input` field on a tool_use block is an already-parsed JSON object that
+ * Bedrock has validated against the tool's input_schema before returning. In
+ * our case input_schema === CITATION_SCHEMA, so input matches KbResponse.
+ *
  * Full spec includes id/type/role/model — we ignore those.
  */
 interface AnthropicResponse {
-  content: Array<{ type: string; text?: string }>
+  content: Array<{
+    type: string
+    text?: string
+    id?: string
+    name?: string
+    input?: unknown
+  }>
   stop_reason?: string
   usage?: { input_tokens?: number; output_tokens?: number }
 }
@@ -72,6 +87,18 @@ function getValidator(): ValidateFunction {
   cachedValidator = ajv.compile(CITATION_SCHEMA as object)
   return cachedValidator
 }
+
+/**
+ * Tool definition shipped on every tool-use-mode request. Reuses the
+ * existing CITATION_SCHEMA as the tool's input_schema, so there is no
+ * duplicate schema definition anywhere in the codebase — the same schema
+ * the OpenAI strict-mode path uses also enforces the Anthropic tool input.
+ *
+ * Name: `emit_kb_response` reads cleanly in Bedrock logs (kbroles-specific
+ * verb). Description tells the model to use this for every reply; we also
+ * enforce that via `tool_choice` below.
+ */
+const KB_RESPONSE_TOOL_NAME = 'emit_kb_response'
 
 /**
  * Build the Anthropic Messages API request body from kbroles' internal shape.
@@ -86,10 +113,18 @@ function getValidator(): ValidateFunction {
  *     same as the gpt-4o-mini → gpt-4o-full investigation in quick-006).
  *   - `stream: false` mirrors the OpenAI primary path; v1.1 streaming work
  *     would refactor here and in the dispatcher.
+ *
+ * Quick 009 — tool-use mode is on when ANTHROPIC_TOOLS_SUPPORTED !== 'false'.
+ * Bedrock then enforces CITATION_SCHEMA on the model's tool input at the
+ * API level, which is the strict-schema equivalent of OpenAI's
+ * `response_format: { type: 'json_schema', strict: true }`. We also set
+ * `disable_parallel_tool_use: true` so the model can't emit more than one
+ * citation block per response (matches GRND-04's ≤1-citation rule which
+ * the validator enforces in src/grounding/validator.ts).
  */
 function buildRequestBody(systemPrompt: string, messages: ChatMessage[]): Record<string, unknown> {
   const e = env()
-  return {
+  const base: Record<string, unknown> = {
     anthropic_version: e.ANTHROPIC_VERSION,
     system: systemPrompt,
     messages: messages.map(m => ({ role: m.role, content: m.content })),
@@ -97,20 +132,76 @@ function buildRequestBody(systemPrompt: string, messages: ChatMessage[]): Record
     temperature: e.ANTHROPIC_TEMPERATURE,
     stream: false,
   }
+
+  if (e.ANTHROPIC_TOOLS_SUPPORTED !== 'false') {
+    base.tools = [
+      {
+        name: KB_RESPONSE_TOOL_NAME,
+        description:
+          'Emit the grounded knowledge-base response with exactly one citation. ' +
+          'Use this tool for every reply, including out-of-scope refusals (set can_answer=false ' +
+          'and citations=[] in that case).',
+        input_schema: CITATION_SCHEMA,
+      },
+    ]
+    base.tool_choice = {
+      type: 'tool',
+      name: KB_RESPONSE_TOOL_NAME,
+      // Anthropic-specific — guarantees the model emits a single tool_use
+      // block per response rather than potentially multiple parallel calls.
+      // Aligns with GRND-04 (≤1 citation).
+      disable_parallel_tool_use: true,
+    }
+  }
+
+  return base
 }
 
 /**
- * Extract the assistant text response from the Anthropic content array.
- * The Messages API returns content as an array of typed blocks; the text
- * payload lives in blocks with type='text'. Empty content array indicates
- * a guardrail intervention or other refusal — caller handles via stop_reason.
+ * Extract the parsed KbResponse from the Anthropic content array.
+ *
+ * Two modes:
+ *   - tool-use (default): find the tool_use block emitted by the
+ *     emit_kb_response tool. Its `input` field is already a parsed JSON
+ *     object that Bedrock validated against CITATION_SCHEMA. No JSON.parse.
+ *   - text (ANTHROPIC_TOOLS_SUPPORTED=false): find text blocks, concatenate
+ *     their `.text` fields, JSON.parse the result. This is the quick-008
+ *     original behaviour, preserved as a proxy-regression escape hatch.
+ *
+ * On structural mismatch (e.g. tool-use mode but no tool_use block in
+ * response — would indicate a proxy bug or Bedrock failure), throws so
+ * the outer Ajv-retry path in streamAnswerAnthropic gets one more shot.
  */
-function extractText(response: AnthropicResponse): string {
-  if (!Array.isArray(response.content)) return ''
-  return response.content
-    .filter(b => b.type === 'text' && typeof b.text === 'string')
+function extractKbResponse(response: AnthropicResponse): unknown {
+  const useTools = env().ANTHROPIC_TOOLS_SUPPORTED !== 'false'
+
+  if (useTools) {
+    const toolBlock = response.content?.find(b => b.type === 'tool_use')
+    if (!toolBlock) {
+      throw new Error(
+        'Anthropic response missing tool_use block (tool-use mode expects emit_kb_response tool call)',
+      )
+    }
+    if (toolBlock.name !== KB_RESPONSE_TOOL_NAME) {
+      throw new Error(
+        `Anthropic response tool_use block has wrong name: expected ${KB_RESPONSE_TOOL_NAME}, got ${String(toolBlock.name)}`,
+      )
+    }
+    if (toolBlock.input === undefined || toolBlock.input === null) {
+      throw new Error('Anthropic response tool_use block has empty input field')
+    }
+    return toolBlock.input
+  }
+
+  // Text mode (escape hatch). Concatenate all text blocks, JSON.parse the result.
+  const text = response.content
+    ?.filter(b => b.type === 'text' && typeof b.text === 'string')
     .map(b => b.text ?? '')
-    .join('')
+    .join('') ?? ''
+  if (text.length === 0) {
+    throw new Error('Anthropic returned empty content with no guardrail signal (text mode)')
+  }
+  return JSON.parse(text)
 }
 
 /**
@@ -173,22 +264,18 @@ async function attemptRequest(
 
   // Guardrail intervention — Bedrock blocked the response. Mirrors the OpenAI
   // path's RefusalError on message.refusal so the route emits fallback{reason:'refusal'}.
+  // Note: a successful tool-use response sets stop_reason='tool_use' (NOT
+  // 'guardrail_intervened'), so this check correctly excludes the happy path.
   if (data.stop_reason === 'guardrail_intervened') {
     throw new RefusalError('Bedrock guardrail intervened')
   }
 
-  const text = extractText(data)
-  if (text.length === 0) {
-    // Empty content with no guardrail signal — most likely a malformed response
-    // from the proxy. Surface as SchemaRejectAfterRetryError so the retry
-    // wrapper above can decide; but if we're already inside the retry, this
-    // bubbles up to the typed throw.
-    throw new Error('Anthropic returned empty content with no guardrail signal')
-  }
-
-  // JSON.parse can throw SyntaxError — caller (streamAnswerAnthropic) catches
-  // and routes through one Ajv retry, identical to the OpenAI json_object path.
-  const parsed = JSON.parse(text) as unknown
+  // Quick 009 — extractor branches internally on ANTHROPIC_TOOLS_SUPPORTED.
+  // In the default tool-use mode it returns the pre-parsed tool_use input
+  // object (Bedrock-schema-validated). In text mode it JSON.parses the
+  // concatenated text-block content. Either way, the result is the
+  // candidate KbResponse that Ajv validates next as defense-in-depth.
+  const parsed = extractKbResponse(data)
 
   const validator = getValidator()
   if (!validator(parsed)) {
