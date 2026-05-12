@@ -31,6 +31,10 @@ const SECRET_KEYS = [
   'ENTRA_TENANT_ID',
   'LLM_API_KEY',
   'LLM_BASE_URL',
+  // Quick 008 — Anthropic (MGTI proxy) x-api-key. Stored alongside LLM_API_KEY
+  // so operators can switch providers via LLM_PROVIDER without re-provisioning
+  // their AWS Secrets Manager blob. Only consumed when LLM_PROVIDER=anthropic.
+  'ANTHROPIC_API_KEY',
   'APPLICATIONINSIGHTS_CONNECTION_STRING',
   'QUESTION_HASH_SALT',
   'SERVICENOW_SERVICE_ACCOUNT',

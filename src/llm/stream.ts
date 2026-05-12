@@ -10,6 +10,7 @@ import {
   UpstreamTimeoutError,
   isRetryableUpstream,
 } from '@/llm/errors'
+import { streamAnswerAnthropic } from '@/llm/anthropicAdapter'
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
@@ -149,6 +150,20 @@ function extractUsage(completion: unknown): StreamAnswerResult['usage'] {
  * and in Task 3.2/3.3: Upstream5xxError, UpstreamAuthError, UpstreamTimeoutError).
  */
 export async function streamAnswer(params: StreamAnswerParams): Promise<StreamAnswerResult> {
+  // Quick 008 — provider dispatch. Operators flip between providers via the
+  // LLM_PROVIDER env var (default 'openai' for backward compat). The Anthropic
+  // adapter ignores the `client` and `strictSchemaSupported` params because
+  // the MGTI Anthropic proxy is a different wire protocol (not OpenAI-
+  // compatible) and does not expose a strict-schema mode in the documented
+  // request body. See src/llm/anthropicAdapter.ts.
+  if (env().LLM_PROVIDER === 'anthropic') {
+    return streamAnswerAnthropic({
+      systemPrompt: params.systemPrompt,
+      messages: params.messages,
+      signal: params.signal,
+    })
+  }
+
   const { client, systemPrompt, messages, signal } = params
   const e = env()
   // Zod-validated: env().STRICT_SCHEMA_SUPPORTED is always the string
@@ -200,7 +215,7 @@ export async function streamAnswer(params: StreamAnswerParams): Promise<StreamAn
       // returns schema-valid JSON or throws at the API level.
       const completion = await withRetry(() => client.chat.completions.create(
         {
-          model: e.LLM_MODEL,
+          model: e.LLM_MODEL!,
           messages: wireMessages,
           response_format: {
             type: 'json_schema',
@@ -238,7 +253,7 @@ export async function streamAnswer(params: StreamAnswerParams): Promise<StreamAn
       // because they address different failure modes.
       const completion = await withRetry(() => client.chat.completions.create(
         {
-          model: e.LLM_MODEL,
+          model: e.LLM_MODEL!,
           messages: wireMessages,
           response_format: { type: 'json_object' },
           stream: false,

@@ -29,7 +29,11 @@ export async function GET(): Promise<Response> {
   try {
     const parsed = env()
     envCheck = 'ok'
-    llmBaseUrl = parsed.LLM_BASE_URL
+    // Quick 008 — LLM_BASE_URL is now optional in env.ts when LLM_PROVIDER=anthropic
+    // (the Anthropic adapter uses ANTHROPIC_BASE_URL instead). Coerce undefined →
+    // null so the downstream `if (llmBaseUrl)` guard skips the MGTI reachability
+    // probe cleanly on the Anthropic path.
+    llmBaseUrl = parsed.LLM_BASE_URL ?? null
   } catch {
     envCheck = 'fail'
   }

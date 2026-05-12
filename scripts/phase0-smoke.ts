@@ -72,7 +72,7 @@ async function smoke1_baseURL(client: ReturnType<typeof createLlmClient>): Promi
   try {
     // Direct SDK call (bypassing our schema-strict wrapper) — minimises variables.
     const completion = await client.chat.completions.create({
-      model: e.LLM_MODEL,
+      model: e.LLM_MODEL!,
       messages: [
         { role: 'system', content: 'You are a test echo. Reply in one short sentence.' },
         { role: 'user', content: 'respond with a short test acknowledgement' },
@@ -84,8 +84,8 @@ async function smoke1_baseURL(client: ReturnType<typeof createLlmClient>): Promi
       name: 'Smoke 1: baseURL suffix + auth',
       status: content ? 'PASS' : 'FAIL',
       evidence: {
-        baseURL: e.LLM_BASE_URL,
-        model: e.LLM_MODEL,
+        baseURL: e.LLM_BASE_URL!,
+        model: e.LLM_MODEL!,
         responseSnippet: typeof content === 'string' ? content.slice(0, 120) : '(empty)',
       },
       remediation: content ? undefined : 'Check LLM_BASE_URL + LLM_API_KEY + auth mode.',
@@ -98,7 +98,7 @@ async function smoke1_baseURL(client: ReturnType<typeof createLlmClient>): Promi
     return {
       name: 'Smoke 1: baseURL suffix + auth',
       status: 'FAIL',
-      evidence: { baseURL: e.LLM_BASE_URL, error: msg },
+      evidence: { baseURL: e.LLM_BASE_URL ?? '(unset)', error: msg },
       remediation: isCaFailure
         ? 'CA chain failure — see Smoke 5. Set NODE_EXTRA_CA_CERTS in SHELL ENV (not .env) pointing to MMC corporate CA bundle PEM.'
         : `On 404/405, try alternative path suffixes: /coreapi/openai, /coreapi/openai/, /coreapi/openai/v1. Update LLM_BASE_URL and retry.`,
@@ -172,7 +172,7 @@ async function smoke3_streamingCadence(client: ReturnType<typeof createLlmClient
     const systemPrompt = composeSystemPrompt('author')
     const start = Date.now()
     const stream = await client.chat.completions.create({
-      model: e.LLM_MODEL,
+      model: e.LLM_MODEL!,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: '<user>Summarise the article naming convention in detail, with a worked example for each of the four parts.</user>' },

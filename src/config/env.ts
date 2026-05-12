@@ -1,10 +1,23 @@
 import { z } from 'zod'
 
 const EnvSchema = z.object({
-  LLM_AUTH_MODE: z.enum(['bearer', 'api-key']),
-  LLM_BASE_URL: z.string().url(),
-  LLM_API_KEY: z.string().min(1),
-  LLM_MODEL: z.string().min(1),
+  // Provider switch (Quick 008). Default 'openai' for backward compatibility —
+  // every existing prod + test env predates this field. Set to 'anthropic' to
+  // route the LLM call through the MGTI /coreapi/llm/anthropic/v1 proxy
+  // (Claude 4.5+ via AWS Bedrock). Each provider has its own required-field
+  // set enforced by the superRefine block at the bottom of this schema.
+  LLM_PROVIDER: z.enum(['openai', 'anthropic']).optional().default('openai'),
+
+  // === OpenAI / Azure-OpenAI fields — required when LLM_PROVIDER=openai ===
+  //
+  // Optional at the schema level so that LLM_PROVIDER=anthropic can omit them
+  // cleanly; the superRefine block below promotes them to required when the
+  // provider is openai (default). Existing tests pass all four fields, so the
+  // observable behaviour for the OpenAI path is unchanged.
+  LLM_AUTH_MODE: z.enum(['bearer', 'api-key']).optional(),
+  LLM_BASE_URL: z.string().url().optional(),
+  LLM_API_KEY: z.string().min(1).optional(),
+  LLM_MODEL: z.string().min(1).optional(),
   // Strict-mode capability flag. Default 'true'. Set to 'false' only when
   // Smoke 2 remediation determines the MGTI deployment does NOT honour
   // response_format: { type: 'json_schema', strict: true }. This flag is
@@ -12,6 +25,34 @@ const EnvSchema = z.object({
   // 'flase', 'False', or '0' fail fast at loadEnv() instead of silently
   // leaving the fallback path inactive. See 01-CONTEXT.md §2/§4.
   STRICT_SCHEMA_SUPPORTED: z.enum(['true', 'false']).optional().default('true'),
+
+  // === Anthropic (MGTI proxy) fields — required when LLM_PROVIDER=anthropic ===
+  //
+  // The MGTI Anthropic proxy is a native Anthropic Messages API surface (NOT
+  // OpenAI-compatible) served at /coreapi/llm/anthropic/v1/model/{modelName}.
+  // Auth is the x-api-key header (third mode — distinct from `bearer` and the
+  // Azure-OpenAI `api-key` mode). See `info/model-recommendation-gpt4o-vs-mini.html`
+  // for the product rationale and the MGTI llm-anthropic spec PDF for the
+  // proxy contract.
+  //
+  // ANTHROPIC_BASE_URL: full proxy URL up to and including `/v1`, e.g.
+  //   https://int.nasa.apis.mmc.com/coreapi/llm/anthropic/v1
+  // ANTHROPIC_API_KEY: x-api-key value issued via Hubble (https://hubble.mmc.com/apps).
+  // ANTHROPIC_MODEL:   model name passed in the URL path. Must be Claude 4.5+,
+  //   currently EU-region-prefixed (e.g. eu.anthropic.claude-sonnet-4-5-20250929-v1:0).
+  // ANTHROPIC_VERSION: anthropic_version body field. Defaults to bedrock-2023-05-31
+  //   per the MGTI spec; rarely needs override.
+  // ANTHROPIC_MAX_TOKENS: required by the API. 1024 covers kbroles answers (~150
+  //   completion tokens observed) with headroom.
+  // ANTHROPIC_TEMPERATURE: 0 by default for citation discipline (mirrors the
+  //   local-dev gpt-4o benchmark where temperature was unset/default — Anthropic
+  //   defaults are different so we pin it explicitly).
+  ANTHROPIC_BASE_URL: z.string().url().optional(),
+  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  ANTHROPIC_MODEL: z.string().min(1).optional(),
+  ANTHROPIC_VERSION: z.string().min(1).optional().default('bedrock-2023-05-31'),
+  ANTHROPIC_MAX_TOKENS: z.coerce.number().int().min(1).optional().default(1024),
+  ANTHROPIC_TEMPERATURE: z.coerce.number().min(0).max(1).optional().default(0),
 
   // Phase-2 /api/chat route limits (02-CONTEXT.md §3 + §4.1).
   // z.coerce.number() lets process.env string values like "20" parse
@@ -136,12 +177,43 @@ const EnvSchema = z.object({
   APPLICATIONINSIGHTS_CONNECTION_STRING: z.string().min(1).optional(),
 })
 
-export type Env = z.infer<typeof EnvSchema>
+// Conditional cross-field validation: the schema-level `optional()` on
+// OpenAI and Anthropic field sets lets either side coexist with the other,
+// but exactly one set must be fully populated depending on LLM_PROVIDER.
+// superRefine runs AFTER defaults, so LLM_PROVIDER is always resolved to
+// 'openai' or 'anthropic' (never undefined) by the time this block runs.
+const EnvSchemaWithRefine = EnvSchema.superRefine((data, ctx) => {
+  if (data.LLM_PROVIDER === 'openai') {
+    const required = ['LLM_AUTH_MODE', 'LLM_BASE_URL', 'LLM_API_KEY', 'LLM_MODEL'] as const
+    for (const field of required) {
+      if (!data[field]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field],
+          message: `${field} is required when LLM_PROVIDER=openai`,
+        })
+      }
+    }
+  } else if (data.LLM_PROVIDER === 'anthropic') {
+    const required = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL'] as const
+    for (const field of required) {
+      if (!data[field]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field],
+          message: `${field} is required when LLM_PROVIDER=anthropic`,
+        })
+      }
+    }
+  }
+})
+
+export type Env = z.infer<typeof EnvSchemaWithRefine>
 
 let cached: Env | null = null
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
-  const parsed = EnvSchema.safeParse(source)
+  const parsed = EnvSchemaWithRefine.safeParse(source)
   if (!parsed.success) {
     throw new Error(`Invalid env: ${JSON.stringify(parsed.error.flatten().fieldErrors)}`)
   }

@@ -17,6 +17,11 @@ describe('env — Phase-2 defaults', () => {
     __resetEnvCacheForTests()
   })
 
+  it('defaults LLM_PROVIDER to "openai" when unset (Quick 008 backward compat)', () => {
+    const env = loadEnv(REQUIRED_VARS as unknown as NodeJS.ProcessEnv)
+    expect(env.LLM_PROVIDER).toBe('openai')
+  })
+
   it('defaults MAX_INFLIGHT_STREAMS to 20 when unset', () => {
     const env = loadEnv(REQUIRED_VARS as unknown as NodeJS.ProcessEnv)
     expect(env.MAX_INFLIGHT_STREAMS).toBe(20)
@@ -52,6 +57,102 @@ describe('env — Phase-2 defaults', () => {
     expect(() =>
       loadEnv({ ...REQUIRED_VARS, MAX_INFLIGHT_STREAMS: '0' } as unknown as NodeJS.ProcessEnv),
     ).toThrow(/Invalid env/)
+  })
+})
+
+describe('env — LLM_PROVIDER switching (Quick 008)', () => {
+  beforeEach(() => {
+    __resetEnvCacheForTests()
+  })
+
+  afterEach(() => {
+    __resetEnvCacheForTests()
+  })
+
+  const ANTHROPIC_VARS = {
+    LLM_PROVIDER: 'anthropic',
+    ANTHROPIC_BASE_URL: 'https://int.nasa.apis.mmc.com/coreapi/llm/anthropic/v1',
+    ANTHROPIC_API_KEY: 'test-anthropic-key',
+    ANTHROPIC_MODEL: 'eu.anthropic.claude-sonnet-4-5-20250929-v1:0',
+  }
+
+  it('LLM_PROVIDER=anthropic with all 3 required ANTHROPIC_* fields parses cleanly without LLM_* fields', () => {
+    const env = loadEnv(ANTHROPIC_VARS as unknown as NodeJS.ProcessEnv)
+    expect(env.LLM_PROVIDER).toBe('anthropic')
+    expect(env.ANTHROPIC_BASE_URL).toBe(ANTHROPIC_VARS.ANTHROPIC_BASE_URL)
+    expect(env.ANTHROPIC_API_KEY).toBe(ANTHROPIC_VARS.ANTHROPIC_API_KEY)
+    expect(env.ANTHROPIC_MODEL).toBe(ANTHROPIC_VARS.ANTHROPIC_MODEL)
+  })
+
+  it('LLM_PROVIDER=anthropic defaults ANTHROPIC_VERSION to bedrock-2023-05-31', () => {
+    const env = loadEnv(ANTHROPIC_VARS as unknown as NodeJS.ProcessEnv)
+    expect(env.ANTHROPIC_VERSION).toBe('bedrock-2023-05-31')
+  })
+
+  it('LLM_PROVIDER=anthropic defaults ANTHROPIC_MAX_TOKENS to 1024 + coerces string values', () => {
+    const env1 = loadEnv(ANTHROPIC_VARS as unknown as NodeJS.ProcessEnv)
+    expect(env1.ANTHROPIC_MAX_TOKENS).toBe(1024)
+
+    __resetEnvCacheForTests()
+    const env2 = loadEnv({
+      ...ANTHROPIC_VARS,
+      ANTHROPIC_MAX_TOKENS: '4096',
+    } as unknown as NodeJS.ProcessEnv)
+    expect(env2.ANTHROPIC_MAX_TOKENS).toBe(4096)
+  })
+
+  it('LLM_PROVIDER=anthropic defaults ANTHROPIC_TEMPERATURE to 0 + coerces string values', () => {
+    const env1 = loadEnv(ANTHROPIC_VARS as unknown as NodeJS.ProcessEnv)
+    expect(env1.ANTHROPIC_TEMPERATURE).toBe(0)
+
+    __resetEnvCacheForTests()
+    const env2 = loadEnv({
+      ...ANTHROPIC_VARS,
+      ANTHROPIC_TEMPERATURE: '0.7',
+    } as unknown as NodeJS.ProcessEnv)
+    expect(env2.ANTHROPIC_TEMPERATURE).toBe(0.7)
+  })
+
+  it('LLM_PROVIDER=anthropic rejects missing ANTHROPIC_API_KEY', () => {
+    const { ANTHROPIC_API_KEY: _omit, ...vars } = ANTHROPIC_VARS
+    void _omit
+    expect(() => loadEnv(vars as unknown as NodeJS.ProcessEnv)).toThrow(/Invalid env/)
+  })
+
+  it('LLM_PROVIDER=anthropic rejects missing ANTHROPIC_MODEL', () => {
+    const { ANTHROPIC_MODEL: _omit, ...vars } = ANTHROPIC_VARS
+    void _omit
+    expect(() => loadEnv(vars as unknown as NodeJS.ProcessEnv)).toThrow(/Invalid env/)
+  })
+
+  it('LLM_PROVIDER=anthropic rejects missing ANTHROPIC_BASE_URL', () => {
+    const { ANTHROPIC_BASE_URL: _omit, ...vars } = ANTHROPIC_VARS
+    void _omit
+    expect(() => loadEnv(vars as unknown as NodeJS.ProcessEnv)).toThrow(/Invalid env/)
+  })
+
+  it('LLM_PROVIDER=anthropic rejects non-URL ANTHROPIC_BASE_URL', () => {
+    expect(() =>
+      loadEnv({ ...ANTHROPIC_VARS, ANTHROPIC_BASE_URL: 'not-a-url' } as unknown as NodeJS.ProcessEnv),
+    ).toThrow(/Invalid env/)
+  })
+
+  it('LLM_PROVIDER=anthropic rejects ANTHROPIC_TEMPERATURE > 1', () => {
+    expect(() =>
+      loadEnv({ ...ANTHROPIC_VARS, ANTHROPIC_TEMPERATURE: '1.5' } as unknown as NodeJS.ProcessEnv),
+    ).toThrow(/Invalid env/)
+  })
+
+  it('LLM_PROVIDER=openai (default) still rejects missing LLM_MODEL', () => {
+    const { LLM_MODEL: _omit, ...vars } = REQUIRED_VARS
+    void _omit
+    expect(() => loadEnv(vars as unknown as NodeJS.ProcessEnv)).toThrow(/Invalid env/)
+  })
+
+  it('LLM_PROVIDER=openai (default) still rejects missing LLM_API_KEY', () => {
+    const { LLM_API_KEY: _omit, ...vars } = REQUIRED_VARS
+    void _omit
+    expect(() => loadEnv(vars as unknown as NodeJS.ProcessEnv)).toThrow(/Invalid env/)
   })
 })
 
