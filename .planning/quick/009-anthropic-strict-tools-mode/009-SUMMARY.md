@@ -2,7 +2,7 @@
 quick: 009
 title: Enable Anthropic strict-tools mode (closes Quick 008 critical gap)
 date: 2026-05-12
-commit: TBD
+commit: e968006
 subsystem: llm
 tags: [llm, anthropic, claude, mgti, bedrock, structured-output, tool-use, citation-contract]
 
@@ -72,7 +72,7 @@ metrics:
 
 | Field | Value |
 |---|---|
-| Hash | TBD |
+| Hash | `e968006` |
 | Subject | `feat(llm): enable Anthropic strict-tools mode (closes Quick 008 critical gap)` |
 | Branch | `master` |
 | Co-Author | `Claude Opus 4.7 (1M context) <noreply@anthropic.com>` |
