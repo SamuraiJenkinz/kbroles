@@ -2,7 +2,7 @@
 quick: 010
 title: Fix Anthropic adapter URL — append /messages to Create Message path
 date: 2026-05-12
-commit: TBD
+commit: 1c368bd
 subsystem: llm
 tags: [llm, anthropic, mgti, bug-fix, url-construction, smoke-test-validation]
 
@@ -51,7 +51,7 @@ metrics:
 
 | Field | Value |
 |---|---|
-| Hash | TBD |
+| Hash | `1c368bd` |
 | Subject | `fix(anthropic): append /messages to Create Message URL path` |
 | Branch | `master` |
 | Co-Author | `Claude Opus 4.7 (1M context) <noreply@anthropic.com>` |
