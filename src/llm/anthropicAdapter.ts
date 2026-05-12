@@ -240,7 +240,13 @@ async function attemptRequest(
   signal: AbortSignal | undefined,
 ): Promise<StreamAnswerResult> {
   const e = env()
-  const url = `${e.ANTHROPIC_BASE_URL!.replace(/\/$/, '')}/model/${encodeURIComponent(e.ANTHROPIC_MODEL!)}`
+  // URL path is `/model/{name}/messages` per MGTI quickstart.md (commit 4477a7e in
+  // mmctech/coreapi-apigee → proxies/llm-anthropic/quickstart.md). The original
+  // MGTI spec PDF documented the path as `/model/{name}` without the /messages
+  // suffix — that was wrong, confirmed by a 404 rf-route-not-found from Apigee
+  // during the Phase A smoke test against the live non-prod NASA proxy
+  // (Quick 010 — 2026-05-12). The /messages suffix is mandatory.
+  const url = `${e.ANTHROPIC_BASE_URL!.replace(/\/$/, '')}/model/${encodeURIComponent(e.ANTHROPIC_MODEL!)}/messages`
   const body = buildRequestBody(systemPrompt, messages)
   const correlationId = crypto.randomUUID()
 

@@ -148,8 +148,9 @@ describe('streamAnswerAnthropic — happy path (default tool-use mode)', () => {
 
     expect(fetchSpy).toHaveBeenCalledTimes(1)
     const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    // /messages suffix is required by the MGTI proxy per quickstart.md (Quick 010).
     expect(url).toBe(
-      'https://stage.int.nasa.apis.mmc.com/coreapi/llm/anthropic/v1/model/eu.anthropic.claude-sonnet-4-5-20250929-v1%3A0',
+      'https://stage.int.nasa.apis.mmc.com/coreapi/llm/anthropic/v1/model/eu.anthropic.claude-sonnet-4-5-20250929-v1%3A0/messages',
     )
     expect(init.method).toBe('POST')
     const headers = init.headers as Record<string, string>
