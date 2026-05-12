@@ -2,7 +2,7 @@
 quick: 011
 title: Allowlist two-tier name check — case-insensitive corpus fallback
 date: 2026-05-12
-commit: TBD
+commit: 8a7c2eb
 subsystem: chat
 tags: [allowlist, corp-02, anthropic, claude, opus, false-positive-reduction]
 
@@ -61,7 +61,7 @@ metrics:
 
 | Field | Value |
 |---|---|
-| Hash | TBD |
+| Hash | `8a7c2eb` |
 | Subject | `feat(allowlist): two-tier name check with case-insensitive corpus fallback` |
 | Branch | `master` |
 | Co-Author | `Claude Opus 4.7 (1M context) <noreply@anthropic.com>` |
