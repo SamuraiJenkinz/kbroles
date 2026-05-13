@@ -2,7 +2,7 @@
 quick: 012
 title: Allowlist Tier 3 word-subset + auth-02 chip text realignment
 date: 2026-05-12
-commit: TBD
+commit: 288c60c
 subsystem: chat + prompts
 tags: [allowlist, chip, anthropic, claude, opus, false-positive-reduction, paraphrase-prevention]
 
@@ -66,7 +66,7 @@ metrics:
 
 | Field | Value |
 |---|---|
-| Hash | TBD |
+| Hash | `288c60c` |
 | Subject | `feat(allowlist+chip): Tier 3 word-subset fallback + auth-02 chip realignment` |
 | Branch | `master` |
 | Co-Author | `Claude Opus 4.7 (1M context) <noreply@anthropic.com>` |
