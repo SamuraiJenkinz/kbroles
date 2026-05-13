@@ -147,3 +147,51 @@ describe('checkEntityAllowlist — Tier 2 case-insensitive substring fallback (Q
     expect(result).toEqual({ passed: false, violationClass: 'names', tokenCount: 2 })
   })
 })
+
+describe('checkEntityAllowlist — Tier 3 word-subset fallback (Quick 012)', () => {
+  // Background: Tier 2 (Quick 011) handles casing drift on phrases that
+  // appear in source. Tier 3 handles bigrams where the exact phrase is
+  // absent from source but the constituent words appear separately —
+  // typically the LLM constructing a title-case phrasing from source
+  // vocabulary in response to the user's question wording.
+  //
+  // Each word in the bigram must appear as a substring somewhere in the
+  // lowercased corpus. .every() short-circuits on the first miss, so the
+  // CORP-02 fabricated-name guard is preserved when at least one
+  // constituent word is genuinely outside the corpus.
+
+  it('passes "Article Structure" — bigram NOT in source, but "article" and "structure" both appear separately', () => {
+    // This is the chip auth-02 production failure pattern (Quick 012).
+    // Source has "Article Body" but no "Article Structure"; "structure"
+    // appears standalone in kb0020882.md.
+    const result = checkEntityAllowlist(
+      'A document discusses the Article Structure with section headings.',
+    )
+    expect(result).toEqual({ passed: true })
+  })
+
+  it('passes "Service Now" — compound source word "ServiceNow" provides both halves as substrings', () => {
+    // Tier 2 would miss this because "service now" (with space) is not a
+    // substring of "servicenow" (no space). Tier 3 splits the answer
+    // bigram into "service" + "now" and finds both as substrings of
+    // "servicenow" individually.
+    const result = checkEntityAllowlist(
+      'A document references the Service Now form.',
+    )
+    expect(result).toEqual({ passed: true })
+  })
+
+  it('STILL FAILS on "Jane Doe" — "jane" does not appear anywhere in source corpus', () => {
+    // CORP-02 invariant test under Tier 3. .every() short-circuits on
+    // the first word that isn't in the corpus, so the fabricated-name
+    // guard remains intact even when one constituent word happens to be
+    // a substring of source text.
+    const result = checkEntityAllowlist('A document references Jane Doe.')
+    expect(result).toEqual({ passed: false, violationClass: 'names', tokenCount: 1 })
+  })
+
+  it('STILL FAILS on "Acme Corporation" — "acme" not in source', () => {
+    const result = checkEntityAllowlist('A document references Acme Corporation.')
+    expect(result).toEqual({ passed: false, violationClass: 'names', tokenCount: 1 })
+  })
+})

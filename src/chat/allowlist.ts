@@ -56,10 +56,32 @@ export function checkEntityAllowlist(answerText: string): AllowlistResult {
     // of source-mentioned terms ("Knowledge Base" when source has
     // "Knowledge base", "Subject Matter" when source has "subject matter
     // expert") which the NAME_RE-based Tier 1 extraction missed because
-    // the regex requires both words title-cased. Fabricated names that
-    // don't appear in any casing anywhere in the corpus still fail —
-    // CORP-02 invented-name guard is preserved.
+    // the regex requires both words title-cased.
     if (SOURCE_CORPUS_LOWERCASE.includes(n.toLowerCase())) return false
+
+    // Quick 012 Tier 3 — word-subset check. After Tier 1 and Tier 2 both
+    // miss, split the bigram on whitespace and verify EVERY constituent
+    // word appears as a substring somewhere in the lowercased corpus.
+    // Allows model-paraphrased title-case bigrams that combine source
+    // vocabulary into a phrase the source doesn't use verbatim — e.g.
+    // "Article Structure" (source uses "Article Body" but both "article"
+    // and "structure" appear in source separately) or "Service Now"
+    // (source has compound "ServiceNow" — "service" and "now" both appear
+    // as substrings). Fabricated names like "Jane Doe" or "Acme
+    // Corporation" still fail because at least one constituent word
+    // (e.g. "jane", "acme") doesn't appear anywhere in source — CORP-02
+    // invented-name guard preserved by the .every() short-circuit.
+    //
+    // Trade-off: a fabrication where BOTH words coincidentally appear in
+    // source (e.g. "Server Room" — common nouns) would pass Tier 3. The
+    // threat model has shifted under Quick 009's strict-tools enforcement:
+    // schema correctness is now guaranteed by Bedrock, the validator
+    // enforces verbatim citation quotes, so the prose is already grounded
+    // through other layers. The allowlist is the final belt-and-suspenders
+    // check, and tightening Tier 3 further would re-introduce the false-
+    // positive surface that Quick 011 + 012 are explicitly closing.
+    const words = n.toLowerCase().split(/\s+/)
+    if (words.every(w => SOURCE_CORPUS_LOWERCASE.includes(w))) return false
 
     return true
   })

@@ -62,8 +62,17 @@ export const SUGGESTED_PROMPTS: Record<Role, ChipItem[]> = {
     },
     {
       id: 'auth-02',
-      label: "What's the naming convention and article structure?",
-      text:  "What's the naming convention and article structure?",
+      // Quick 012 — reworded from "article structure" → "article body format".
+      // "article body" appears verbatim in source (servicenow-form.md "## Article
+      // Body Field" + multiple body-text mentions), so Opus 4.6 stops constructing
+      // the title-case "Article Structure" bigram which the entity allowlist
+      // rejects (the phrase doesn't appear in any source). 3/3 prod failures on
+      // this chip's question_hash before this change. See
+      // .planning/quick/012-allowlist-word-subset-and-chip-realignment/.
+      // NOTE: info/KB_Assistant_ClaudeCode_Handover.md §16 should be updated to
+      // match — the handover is the upstream "source of truth" per file header.
+      label: "What's the naming convention and article body format?",
+      text:  "What's the naming convention and article body format?",
     },
     {
       id: 'auth-03',
